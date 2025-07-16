@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -42,6 +42,8 @@ SOFTWARE.
  */
 namespace ST.Library.UI.NodeEditor
 {
+    public enum PinStyle { Square, Circle, ArrowUp, ArrowDown, ArrowLeft, ArrowRight }
+
     public class STNode
     {
         private STNodeEditor _Owner;
@@ -601,7 +603,9 @@ namespace ST.Library.UI.NodeEditor
                     if (this.InputOptions[i].Text == option.ToString())
                         return this.InputOptions[i];
 
-            return this.InputOptions.Add(option, typeof(void), false);
+            var newOp = this.InputOptions.Add(option, typeof(void), false);
+            newOp.Style = PinStyle.ArrowRight;
+            return newOp;
         }
         public STNodeOption AddOutputOption(ShortGuid option, bool unique = false)
         {
@@ -610,18 +614,22 @@ namespace ST.Library.UI.NodeEditor
                     if (this.OutputOptions[i].Text == option.ToString())
                         return this.OutputOptions[i];
 
-            return this.OutputOptions.Add(option, typeof(void), false);
+            var newOp = this.OutputOptions.Add(option, typeof(void), false);
+            newOp.Style = PinStyle.ArrowRight;
+            return newOp;
         }
 
-        // ADDED: Methods to add Top and Bottom options
-        public STNodeOption AddTopOption(ShortGuid option, bool unique = false)
+        public STNodeOption AddTopOption(ShortGuid option, bool unique = false, PinStyle style = PinStyle.ArrowUp)
         {
             if (!unique)
                 for (int i = 0; i < this.TopOptions.Count; i++)
                     if (this.TopOptions[i].Text == option.ToString())
                         return this.TopOptions[i];
-            
-            return this.TopOptions.Add(option, typeof(void), false);
+
+            var newOp = this.TopOptions.Add(option, typeof(void), false);
+            if (style != PinStyle.ArrowUp && style != PinStyle.ArrowDown) style = PinStyle.ArrowUp;
+            newOp.Style = style;
+            return newOp;
         }
         public STNodeOption AddBottomOption(ShortGuid option, bool unique = false)
         {
@@ -630,7 +638,9 @@ namespace ST.Library.UI.NodeEditor
                     if (this.BottomOptions[i].Text == option.ToString())
                         return this.BottomOptions[i];
 
-            return this.BottomOptions.Add(option, typeof(void), false);
+            var newOp = this.BottomOptions.Add(option, typeof(void), false);
+            newOp.Style = PinStyle.ArrowDown;
+            return newOp;
         }
 
         public void RemoveInputOption(ShortGuid option)
@@ -925,38 +935,73 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="op">Specified options</param>
         protected virtual void OnDrawOptionDot(DrawingTools dt, STNodeOption op) {
             Graphics g = dt.Graphics;
-            Pen pen = dt.Pen;
             SolidBrush brush = dt.SolidBrush;
             var t = typeof(object);
             if (op.DotColor != Color.Transparent)           //Set color
                 brush.Color = op.DotColor;
-            else {
+            else
+            {
                 if (op.DataType == t)
-                    pen.Color = this.Owner.UnknownTypeColor;
+                    brush.Color = this.Owner.UnknownTypeColor;
                 else
                     brush.Color = this.Owner.TypeColor.ContainsKey(op.DataType) ? this.Owner.TypeColor[op.DataType] : this.Owner.UnknownTypeColor;
             }
-            if (op.IsSingle) {                              //Single connection round
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                if (op.DataType == t) {                     //Unknown type draw, otherwise fill
-                    g.DrawEllipse(pen, op.DotRectangle.X, op.DotRectangle.Y, op.DotRectangle.Width - 1, op.DotRectangle.Height - 1);
-                } else
-                    g.FillEllipse(brush, op.DotRectangle);
-            } else {                                        //Multi-connected rectangle
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
-                if (op.DataType == t) {
-                    g.DrawRectangle(pen, op.DotRectangle.X, op.DotRectangle.Y, op.DotRectangle.Width - 1, op.DotRectangle.Height - 1);
-                } else
-                    g.FillRectangle(brush, op.DotRectangle);
+
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Point[] points;
+            Rectangle r = op.DotRectangle;
+
+            switch (op.Style)
+            {
+                case PinStyle.ArrowUp:
+                    points = new Point[] {
+                        new Point(r.Left, r.Bottom),
+                        new Point(r.Right, r.Bottom),
+                        new Point(r.X + r.Width / 2, r.Top)
+                    };
+                    g.FillPolygon(brush, points);
+                    break;
+
+                case PinStyle.ArrowDown:
+                    points = new Point[] {
+                        new Point(r.Left, r.Top),
+                        new Point(r.Right, r.Top),
+                        new Point(r.X + r.Width / 2, r.Bottom)
+                    };
+                    g.FillPolygon(brush, points);
+                    break;
+
+                case PinStyle.ArrowLeft:
+                    points = new Point[] {
+                        new Point(r.Right, r.Top),
+                        new Point(r.Right, r.Bottom),
+                        new Point(r.Left, r.Y + r.Height / 2)
+                    };
+                    g.FillPolygon(brush, points);
+                    break;
+
+                case PinStyle.ArrowRight:
+                    points = new Point[] {
+                       new Point(r.Left, r.Top),
+                       new Point(r.Left, r.Bottom),
+                       new Point(r.Right, r.Y + r.Height / 2)
+                   };
+                    g.FillPolygon(brush, points);
+                    break;
+
+                case PinStyle.Circle:
+                    g.FillEllipse(brush, r);
+                    break;
+
+                case PinStyle.Square:
+                default:
+                    g.SmoothingMode = SmoothingMode.None;
+                    g.FillRectangle(brush, r);
+                    break;
             }
         }
-        /// <summary>
-        /// Text for drawing options
-        /// </summary>
-        /// <param name="dt">Drawing tools</param>
-        /// <param name="op">Specified options</param>
-        protected virtual void OnDrawOptionText(DrawingTools dt, STNodeOption op) {
-            // MODIFIED: Rewritten to scale font size for horizontal pins to fit within MaxPinWidth.
+        protected virtual void OnDrawOptionText(DrawingTools dt, STNodeOption op)
+        {
             if (!RenderingOptions)
                 return;
 
@@ -1347,11 +1392,15 @@ namespace ST.Library.UI.NodeEditor
             int nIndex = 0;
             int topStartOffset = RenderingOptions ? this._Top + this._TitleHeight : this._Top;
             
-            // 1. Position Left and Right pins (vertically)
+            // Left pins (Inputs)
             Rectangle rect = new Rectangle(this.Left + 10, topStartOffset, this._Width - 20, this._ItemHeight);
-            foreach (STNodeOption op in this._InputOptions) { // Left pins
+            foreach (STNodeOption op in this._InputOptions) {
                 if (op != STNodeOption.Empty) {
-                    Point pt = this.OnSetOptionDotLocation(op, new Point(this.Left - op.DotSize / 2, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
+                    int x = this.Left - op.DotSize / 2; // Default for square/circle
+                    if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
+                        x = this.Left - op.DotSize;
+                    }
+                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
                     op.TextRectangle = this.OnSetOptionTextRectangle(op, rect, nIndex);
                     op.DotLeft = pt.X;
                     op.DotTop = pt.Y;
@@ -1360,11 +1409,16 @@ namespace ST.Library.UI.NodeEditor
                 nIndex++;
             }
             
-            rect.Y = topStartOffset; // Reset Y for right-side pins
+            // Right pins (Outputs)
+            rect.Y = topStartOffset;
             nIndex = 0;
-            foreach (STNodeOption op in this._OutputOptions) { // Right pins
+            foreach (STNodeOption op in this._OutputOptions) {
                 if (op != STNodeOption.Empty) {
-                    Point pt = this.OnSetOptionDotLocation(op, new Point(this.Right - op.DotSize / 2, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
+                    int x = this.Right - op.DotSize / 2; // Default for square/circle
+                    if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
+                        x = this.Right;
+                    }
+                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
                     op.TextRectangle = this.OnSetOptionTextRectangle(op, rect, nIndex);
                     op.DotLeft = pt.X;
                     op.DotTop = pt.Y;
@@ -1388,13 +1442,20 @@ namespace ST.Library.UI.NodeEditor
                     float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
                     float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
                     
+                    int y = this.Top - op.DotSize / 2; // Default
+                    if (op.Style == PinStyle.ArrowUp) {
+                        y = this.Top - op.DotSize;
+                    } else if (op.Style == PinStyle.ArrowDown) {
+                        y = this.Top;
+                    }
+
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
-                    op.DotTop = this.Top - (op.DotSize / 2);
+                    op.DotTop = y;
                     op.TextRectangle = new Rectangle((int)currentX, this.Top - this._ItemHeight, (int)pinVisibleWidth, this._ItemHeight);
                     currentX += pinVisibleWidth + H_PADDING;
                 }
                 
-                // Position Bottom Pins
+                // Bottom Pins
                 float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
                 if (totalBottomWidth > 0) totalBottomWidth -= H_PADDING;
                 currentX = this.Left + (this.Width - totalBottomWidth) / 2f;
@@ -1405,61 +1466,47 @@ namespace ST.Library.UI.NodeEditor
                     float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
                     float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
 
+                    int y = this.Bottom - op.DotSize / 2; // Default
+                    if (op.Style == PinStyle.ArrowDown) {
+                        y = this.Bottom;
+                    } else if (op.Style == PinStyle.ArrowUp) {
+                        y = this.Bottom - op.DotSize;
+                    }
+
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
-                    op.DotTop = this.Bottom - (op.DotSize / 2);
+                    op.DotTop = y;
                     op.TextRectangle = new Rectangle((int)currentX, this.Bottom, (int)pinVisibleWidth, this._ItemHeight);
                     currentX += pinVisibleWidth + H_PADDING;
                 }
             }
         }
 
-        /// <summary>
-        /// Redraw Node.
-        /// </summary>
         public void Invalidate() {
             if (this._Owner != null) {
-                // MODIFIED: Increased invalidation area slightly to ensure top/bottom pins are redrawn
                 this._Owner.Invalidate(this._Owner.CanvasToControl(new Rectangle(this._Left - 10, this._Top - 30, this._Width + 20, this._Height + 60)));
             }
         }
-        /// <summary>
-        /// Redraw the designated area of ​​Node.
-        /// </summary>
-        /// <param name="rect">Node designated area</param>
         public void Invalidate(Rectangle rect) {
             rect.X += this._Left;
             rect.Y += this._Top;
             if (this._Owner != null) {
                 rect = this._Owner.CanvasToControl(rect);
-                rect.Width += 1; rect.Height += 1;//坐标系统转换可能导致进度丢失 多加上一个像素
+                rect.Width += 1; rect.Height += 1;
                 this._Owner.Invalidate(rect);
             }
         }
-        /// <summary>
-        /// Get the set of input options contained in this Node.
-        /// </summary>
-        /// <returns>Option collection</returns>
         public STNodeOption[] GetInputOptions() {
             if (!this._LetGetOptions) return null;
             STNodeOption[] ops = new STNodeOption[this._InputOptions.Count];
             for (int i = 0; i < this._InputOptions.Count; i++) ops[i] = this._InputOptions[i];
             return ops;
         }
-        /// <summary>
-        /// Get the set of output options contained in this Node.
-        /// </summary>
-        /// <returns>Option collection</returns>
         public STNodeOption[] GetOutputOptions() {
             if (!this._LetGetOptions) return null;
             STNodeOption[] ops = new STNodeOption[this._OutputOptions.Count];
             for (int i = 0; i < this._OutputOptions.Count; i++) ops[i] = this._OutputOptions[i];
             return ops;
         }
-        /// <summary>
-        /// Set the selected state of Node.
-        /// </summary>
-        /// <param name="bSelected">Whether selected</param>
-        /// <param name="bRedraw">Whether to redraw</param>
         public void SetSelected(bool bSelected, bool bRedraw) {
             if (this._IsSelected == bSelected) return;
             this._IsSelected = bSelected;

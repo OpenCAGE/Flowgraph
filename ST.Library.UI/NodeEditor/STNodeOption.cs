@@ -215,6 +215,8 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         protected HashSet<STNodeOption> m_hs_connected;
 
+        public PinStyle Style { get; set; } = PinStyle.Square;
+
         #region Constructor
 
         private STNodeOption()
