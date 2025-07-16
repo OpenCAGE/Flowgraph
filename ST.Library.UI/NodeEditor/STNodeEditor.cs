@@ -456,7 +456,7 @@ namespace ST.Library.UI.NodeEditor
         /// <summary>
         /// Used to save the starting point coordinates of the Option under the save point during the connection process.
         /// </summary>
-        protected Point m_pt_dot_down;
+        protected PointF m_pt_dot_down;
         /// <summary>
         /// Used to save the starting point under the mouse point in the connection process Option When MouseUP determines whether to connect to this node.
         /// </summary>
@@ -715,10 +715,29 @@ namespace ST.Library.UI.NodeEditor
             if (m_ca == CanvasAction.ConnectOption) {                       //If you are connecting
                 m_drawing_tools.Pen.Color = this._HighLineColor;
                 g.SmoothingMode = SmoothingMode.HighQuality;
+
+                PointF startPt = m_pt_dot_down;
+                PointF endPt = m_pt_in_canvas;
+                // Invert flow if the source is an input pin
                 if (m_option_down.IsInput)
-                    this.DrawBezier(g, m_drawing_tools.Pen, m_pt_in_canvas, m_pt_dot_down, this._Curvature);
+                {
+                    startPt = m_pt_in_canvas;
+                    endPt = m_pt_dot_down;
+                }
+                
+                // MODIFIED: Reverted to simpler S-curve logic, but with directionality.
+                bool isVertical = m_option_down.Owner.TopOptions.Contains(m_option_down) ||
+                                  m_option_down.Owner.BottomOptions.Contains(m_option_down);
+
+                if (isVertical)
+                {
+                    bool isTop = m_option_down.Owner.TopOptions.Contains(m_option_down);
+                    DrawVerticalBezier(g, m_drawing_tools.Pen, startPt, endPt, _Curvature, isTop);
+                }
                 else
-                    this.DrawBezier(g, m_drawing_tools.Pen, m_pt_dot_down, m_pt_in_canvas, this._Curvature);
+                {
+                    DrawHorizontalBezier(g, m_drawing_tools.Pen, startPt, endPt, _Curvature);
+                }
             }
             //Reset the drawing coordinates. I think that other than the nodes, the decoration related drawing should not be drawn in the Canvas coordinate system, but the coordinates of the control should be used for drawing, otherwise it will be affected by the zoom ratio.
             g.ResetTransform();
@@ -1184,47 +1203,71 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         /// <param name="dt">Drawing tools</param>
         protected virtual void OnDrawConnectedLine(DrawingTools dt) {
+            // MODIFIED: This whole method is updated to handle drawing lines from all pin types
+            // and to select the correct bezier curve style (horizontal vs vertical).
             Graphics g = dt.Graphics;
             g.SmoothingMode = SmoothingMode.HighQuality;
             m_p_line_hover.Color = Color.FromArgb(50, 0, 0, 0);
             var t = typeof(object);
-            foreach (STNode n in this._Nodes) {
-                foreach (STNodeOption op in n.OutputOptions) {
+            foreach (STNode n in this._Nodes)
+            {
+                var allOutputOptions = n.OutputOptions.Cast<STNodeOption>()
+                                        .Concat(n.TopOptions.Cast<STNodeOption>())
+                                        .Concat(n.BottomOptions.Cast<STNodeOption>());
+
+                foreach (STNodeOption op in allOutputOptions)
+                {
                     if (op == STNodeOption.Empty) continue;
-                    if (op.DotColor != Color.Transparent)       //Determine the line color
+                    
+                    if (op.DotColor != Color.Transparent)
                         m_p_line.Color = op.DotColor;
-                    else {
+                    else
+                    {
                         if (op.DataType == t)
                             m_p_line.Color = this._UnknownTypeColor;
                         else
-                            m_p_line.Color = this._TypeColor.ContainsKey(op.DataType) ? this._TypeColor[op.DataType] : this._UnknownTypeColor;//value can not be null
+                            m_p_line.Color = this._TypeColor.ContainsKey(op.DataType) ? this._TypeColor[op.DataType] : this._UnknownTypeColor;
                     }
-                    foreach (var v in op.ConnectedOption) {
-                        this.DrawBezier(g, m_p_line_hover, op.DotLeft + op.DotSize, op.DotTop + op.DotSize / 2,
-                            v.DotLeft - 1, v.DotTop + v.DotSize / 2, this._Curvature);
-                        this.DrawBezier(g, m_p_line, op.DotLeft + op.DotSize, op.DotTop + op.DotSize / 2,
-                            v.DotLeft - 1, v.DotTop + v.DotSize / 2, this._Curvature);
-                        if (m_is_buildpath) {                       //If the current drawing needs to re-establish the connected path cache
-                            GraphicsPath gp = this.CreateBezierPath(op.DotLeft + op.DotSize, op.DotTop + op.DotSize / 2,
-                                v.DotLeft - 1, v.DotTop + v.DotSize / 2, this._Curvature);
-                            m_dic_gp_info.Add(gp, new ConnectionInfo() { Output = op, Input = v });
+
+                    bool isVertical = n.TopOptions.Contains(op) || n.BottomOptions.Contains(op);
+                    bool isTop = n.TopOptions.Contains(op);
+
+                    foreach (var v in op.ConnectedOption)
+                    {
+                        PointF startPt = new PointF(op.DotLeft + op.DotSize / 2f, op.DotTop + op.DotSize / 2f);
+                        PointF endPt = new PointF(v.DotLeft + v.DotSize / 2f, v.DotTop + v.DotSize / 2f);
+                        
+                        if (isVertical)
+                        {
+                            DrawVerticalBezier(g, m_p_line_hover, startPt, endPt, _Curvature, isTop);
+                            DrawVerticalBezier(g, m_p_line, startPt, endPt, _Curvature, isTop);
+                            if (m_is_buildpath)
+                            {
+                                m_dic_gp_info.Add(CreateVerticalBezierPath(startPt, endPt, _Curvature, isTop), new ConnectionInfo() { Output = op, Input = v });
+                            }
+                        }
+                        else
+                        {
+                            DrawHorizontalBezier(g, m_p_line_hover, startPt, endPt, _Curvature);
+                            DrawHorizontalBezier(g, m_p_line, startPt, endPt, _Curvature);
+                            if (m_is_buildpath)
+                            {
+                                m_dic_gp_info.Add(CreateHorizontalBezierPath(startPt, endPt, _Curvature), new ConnectionInfo() { Output = op, Input = v });
+                            }
                         }
                     }
                 }
             }
             m_p_line_hover.Color = this._HighLineColor;
             if (m_gp_hover != null)
-            {       //If there is currently a hovering link, highlight it and draw it
-
-                // The call to DrawPath() occasionally crashes. It would seem like m_gp_hover has somehow been disposed of or something
-                // but I haven't been able to reproduce it reliably, so I'll slap a try-catch around the call for now...
+            {
                 try
                 {
                     g.DrawPath(m_p_line_hover, m_gp_hover);
                 }
-                catch (Exception /*ex*/) { }
+                catch (Exception) { }
             }
-            m_is_buildpath = false;         //Reset the flag, the path cache will not be re-established the next time you draw
+            m_is_buildpath = false;
         }
         /// <summary>
         /// Occurs when drawing the Mark details.
@@ -1550,13 +1593,7 @@ namespace ST.Library.UI.NodeEditor
         }
 
         private void StartConnect(STNodeOption op) {
-            if (op.IsInput) {
-                m_pt_dot_down.X = op.DotLeft;
-                m_pt_dot_down.Y = op.DotTop + 5;
-            } else {
-                m_pt_dot_down.X = op.DotLeft + op.DotSize;
-                m_pt_dot_down.Y = op.DotTop + 5;
-            }
+            m_pt_dot_down = new PointF(op.DotLeft + op.DotSize / 2f, op.DotTop + op.DotSize / 2f);
             m_ca = CanvasAction.ConnectOption;
             m_option_down = op;
         }
@@ -1680,32 +1717,61 @@ namespace ST.Library.UI.NodeEditor
             return m_mi;
         }
 
-        private void DrawBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f) {
-            this.DrawBezier(g, p, ptStart.X, ptStart.Y, ptEnd.X, ptEnd.Y, f);
-        }
-
-        private void DrawBezier(Graphics g, Pen p, float x1, float y1, float x2, float y2, float f) {
-            float n = (Math.Abs(x1 - x2) * f);
+        // MODIFIED: All drawing logic reverted to these simpler S-curve helpers.
+        private void DrawHorizontalBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f) {
+            float n = (Math.Abs(ptStart.X - ptEnd.X) * f);
             if (this._Curvature != 0 && n < 30) n = 30;
             g.DrawBezier(p,
-                x1, y1,
-                x1 + n, y1,
-                x2 - n, y2,
-                x2, y2);
+                ptStart.X, ptStart.Y,
+                ptStart.X + n, ptStart.Y,
+                ptEnd.X - n, ptEnd.Y,
+                ptEnd.X, ptEnd.Y);
         }
 
-        private GraphicsPath CreateBezierPath(float x1, float y1, float x2, float y2, float f) {
+        private void DrawVerticalBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f, bool startPinIsOnTop) {
+            float n = (Math.Abs(ptStart.Y - ptEnd.Y) * f);
+            if (this._Curvature != 0 && n < 30) n = 30;
+            
+            float startOffset = startPinIsOnTop ? -n : n;
+            float endOffset = startPinIsOnTop ? n : -n;
+
+            g.DrawBezier(p,
+                ptStart.X, ptStart.Y,
+                ptStart.X, ptStart.Y + startOffset,
+                ptEnd.X, ptEnd.Y + endOffset,
+                ptEnd.X, ptEnd.Y);
+        }
+
+        private GraphicsPath CreateHorizontalBezierPath(PointF ptStart, PointF ptEnd, float f) {
             GraphicsPath gp = new GraphicsPath();
-            float n = (Math.Abs(x1 - x2) * f);
+            float n = (Math.Abs(ptStart.X - ptEnd.X) * f);
             if (this._Curvature != 0 && n < 30) n = 30;
             gp.AddBezier(
-                x1, y1,
-                x1 + n, y1,
-                x2 - n, y2,
-                x2, y2
+                ptStart.X, ptStart.Y,
+                ptStart.X + n, ptStart.Y,
+                ptEnd.X - n, ptEnd.Y,
+                ptEnd.X, ptEnd.Y
                 );
             return gp;
         }
+
+        private GraphicsPath CreateVerticalBezierPath(PointF ptStart, PointF ptEnd, float f, bool startPinIsOnTop) {
+            GraphicsPath gp = new GraphicsPath();
+            float n = (Math.Abs(ptStart.Y - ptEnd.Y) * f);
+            if (this._Curvature != 0 && n < 30) n = 30;
+
+            float startOffset = startPinIsOnTop ? -n : n;
+            float endOffset = startPinIsOnTop ? n : -n;
+
+            gp.AddBezier(
+                ptStart.X, ptStart.Y,
+                ptStart.X, ptStart.Y + startOffset,
+                ptEnd.X, ptEnd.Y + endOffset,
+                ptEnd.X, ptEnd.Y
+                );
+            return gp;
+        }
+
 
         private void RenderBorder(Graphics g, Rectangle rect, Image img) {
             //Fill the four corners
@@ -1737,28 +1803,34 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="pt">Coordinates in the canvas</param>
         /// <returns>Data found</returns>
         public NodeFindInfo FindNodeFromPoint(PointF pt) {
+            // MODIFIED: Added checks for Top and Bottom pins.
             m_find.Node = null; m_find.NodeOption = null; m_find.Mark = null;
             for (int i = this._Nodes.Count - 1; i >= 0; i--) {
-                if (!string.IsNullOrEmpty(this._Nodes[i].Mark) && this.PointInRectangle(this._Nodes[i].MarkRectangle, pt.X, pt.Y)) {
-                    m_find.Mark = this._Nodes[i].Mark;
-                    m_find.MarkLines = this._Nodes[i].MarkLines;
+                var currentNode = this._Nodes[i];
+                if (!string.IsNullOrEmpty(currentNode.Mark) && this.PointInRectangle(currentNode.MarkRectangle, pt.X, pt.Y)) {
+                    m_find.Mark = currentNode.Mark;
+                    m_find.MarkLines = currentNode.MarkLines;
                     return m_find;
                 }
-                foreach (STNodeOption v in this._Nodes[i].InputOptions) {
+                
+                // Check all pin types
+                var allOptions = currentNode.InputOptions.Cast<STNodeOption>()
+                                    .Concat(currentNode.OutputOptions.Cast<STNodeOption>())
+                                    .Concat(currentNode.TopOptions.Cast<STNodeOption>())
+                                    .Concat(currentNode.BottomOptions.Cast<STNodeOption>());
+
+                foreach (STNodeOption v in allOptions) {
                     if (v == STNodeOption.Empty) continue;
                     if (this.PointInRectangle(v.HitRectangle, pt.X, pt.Y)) m_find.NodeOption = v;
                 }
-                foreach (STNodeOption v in this._Nodes[i].OutputOptions) {
-                    if (v == STNodeOption.Empty) continue;
-                    if (this.PointInRectangle(v.HitRectangle, pt.X, pt.Y)) m_find.NodeOption = v;
-                }
-                if (this.PointInRectangle(this._Nodes[i].Rectangle, pt.X, pt.Y)) {
-                    m_find.Node = this._Nodes[i];
+                
+                if (this.PointInRectangle(currentNode.Rectangle, pt.X, pt.Y)) {
+                    m_find.Node = currentNode;
                 }
 
                 if (m_find.NodeOption != null && m_find.Node != null)
                 {
-                    // If we hit a node and it's option, the option takes
+                    // If we hit a node and its option, the option takes
                     // precedence so clear the active control.
                     m_find.Node.ClearActiveCtrl();
                 }
