@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using System.Collections;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
+using System.Drawing.Drawing2D;
 /*
 MIT License
 
@@ -373,16 +374,32 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public int OutputOptionsCount { get { return _OutputOptions.Count; } }
 
-        // ADDED: Collections for Top and Bottom pins
+        // MODIFIED: Added collections for Top and Bottom pins
         /// <summary>
-        /// Get a collection of top options.
+        /// Get a collection of top options. (Treated as Inputs)
         /// </summary>
         protected internal STNodeOptionCollection TopOptions { get; private set; }
         /// <summary>
-        /// Get a collection of bottom options.
+        /// Get a collection of bottom options. (Treated as Outputs)
         /// </summary>
         protected internal STNodeOptionCollection BottomOptions { get; private set; }
         
+        // MODIFIED: Added configurable max width for horizontal pins
+        private int _maxPinWidth = 50;
+        /// <summary>
+        /// Gets or sets the maximum width for an individual top or bottom pin's text area.
+        /// When the editor is zoomed, the text will scale to fit and be clipped.
+        /// </summary>
+        public int MaxPinWidth {
+            get { return _maxPinWidth; }
+            set {
+                if (value < 10) value = 10; // Set a reasonable minimum
+                if (_maxPinWidth == value) return;
+                _maxPinWidth = value;
+                this.BuildSize(true, true, true);
+            }
+        }
+
         private STNodeControlCollection _Controls;
         /// <summary>
         /// Get the collection of controls contained in Node.
@@ -517,8 +534,8 @@ namespace ST.Library.UI.NodeEditor
             this._MarkRectangle.Y = this._Top - 30;
             this._InputOptions = new STNodeOptionCollection(this, true);
             this._OutputOptions = new STNodeOptionCollection(this, false);
-            // ADDED: Initialize Top and Bottom collections. We'll treat them as outputs (isInput=false)
-            this.TopOptions = new STNodeOptionCollection(this, false);
+            // MODIFIED: Initialize Top as Input and Bottom as Output to allow connections between them.
+            this.TopOptions = new STNodeOptionCollection(this, true);
             this.BottomOptions = new STNodeOptionCollection(this, false);
             this._Controls = new STNodeControlCollection(this);
             this._BackColor = Color.FromArgb(200, 64, 64, 64);
@@ -939,39 +956,56 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="dt">Drawing tools</param>
         /// <param name="op">Specified options</param>
         protected virtual void OnDrawOptionText(DrawingTools dt, STNodeOption op) {
-
+            // MODIFIED: Rewritten to scale font size for horizontal pins to fit within MaxPinWidth.
             if (!RenderingOptions)
                 return;
 
             Graphics g = dt.Graphics;
             SolidBrush brush = dt.SolidBrush;
             
-            // MODIFIED: Change text alignment based on pin location
-            if (this.TopOptions.Contains(op) || this.BottomOptions.Contains(op))
-            {
+            bool isHorizontalPin = this.TopOptions.Contains(op) || this.BottomOptions.Contains(op);
+            
+            if (isHorizontalPin) {
                 m_sf.Alignment = StringAlignment.Center;
-                // Vertical alignment for text
-                if (this.TopOptions.Contains(op))
-                {
-                     m_sf.LineAlignment = StringAlignment.Far; // Place text above the dot
-                }
-                else
-                {
-                    m_sf.LineAlignment = StringAlignment.Near; // Place text below the dot
-                }
-            }
-            else if (op.IsInput) {
-                m_sf.Alignment = StringAlignment.Near;
-                m_sf.LineAlignment = StringAlignment.Center;
+                m_sf.LineAlignment = this.TopOptions.Contains(op) ? StringAlignment.Far : StringAlignment.Near;
             } else {
-                m_sf.Alignment = StringAlignment.Far;
+                m_sf.Alignment = op.IsInput ? StringAlignment.Near : StringAlignment.Far;
                 m_sf.LineAlignment = StringAlignment.Center;
             }
             
+            RectangleF textRect = op.TextRectangle;
+            Font fontToUse = this.Font;
+            bool fontCreated = false;
+
+            // For horizontal pins, dynamically adjust the font size so the text fits within the pin's capped width.
+            if (isHorizontalPin) {
+                // Measure the full text width with the node's default font.
+                SizeF fullTextSize = g.MeasureString(op.Text, this.Font);
+                
+                // The visible width is defined by the pin's text rectangle.
+                float visibleWidth = textRect.Width;
+
+                // If the full text is wider than the allowed space, we need to create a new, smaller font.
+                if (fullTextSize.Width > visibleWidth && visibleWidth > 0) {
+                    // Calculate the ratio to scale the font size.
+                    float scaleRatio = visibleWidth / fullTextSize.Width;
+                    float newSize = this.Font.Size * scaleRatio;
+                    
+                    // Create the new font. We'll dispose of it after drawing.
+                    fontToUse = new Font(this.Font.FontFamily, newSize, this.Font.Style);
+                    fontCreated = true;
+                }
+            }
+
             brush.Color = op.TextColor;
-            g.DrawString(op.Text, this.Font, brush, op.TextRectangle, m_sf);
+            g.DrawString(op.Text, fontToUse, brush, textRect, m_sf);
             
-            // Reset to default
+            // If we created a temporary font, we must dispose of it to avoid memory leaks.
+            if (fontCreated) {
+                fontToUse.Dispose();
+            }
+            
+            // Reset string format to default for other drawing operations.
             m_sf.LineAlignment = StringAlignment.Center;
         }
         /// <summary>
@@ -1002,7 +1036,7 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="g">Drawing panel</param>
         /// <returns>Calculated size</returns>
         protected virtual Size GetDefaultNodeSize(Graphics g) {
-            // MODIFIED: Complete rewrite to handle horizontal and vertical pins
+            // MODIFIED: Complete rewrite to handle horizontal and vertical pins with max width
             
             // 1. Calculate Height based on vertical (Left/Right) pins
             int nInputHeight = 0, nOutputHeight = 0;
@@ -1013,36 +1047,38 @@ namespace ST.Library.UI.NodeEditor
             }
             int nHeight = this._TitleHeight + Math.Max(nInputHeight, nOutputHeight);
 
-            // 2. Calculate Width based on horizontal (Top/Bottom) pins and text of vertical pins
-            
-            // Get width from Top/Bottom pins
+            // 2. Calculate Width 
             const int H_PADDING = 15;
+
+            // Get width from Top/Bottom pins, respecting MaxPinWidth
             float topPinsWidth = 0;
-            if (RenderingOptions)
-            {
-                foreach (STNodeOption op in this.TopOptions)
-                    topPinsWidth += g.MeasureString(op.Text, this.Font).Width + H_PADDING;
+            if (RenderingOptions) {
+                foreach (STNodeOption op in this.TopOptions) {
+                    float textWidth = g.MeasureString(op.Text, this.Font).Width;
+                    topPinsWidth += Math.Min(textWidth, this.MaxPinWidth) + H_PADDING;
+                }
             }
+            if (topPinsWidth > 0) topPinsWidth -= H_PADDING; // Remove last padding
             
             float bottomPinsWidth = 0;
-            if (RenderingOptions)
-            {
-                foreach (STNodeOption op in this.BottomOptions)
-                    bottomPinsWidth += g.MeasureString(op.Text, this.Font).Width + H_PADDING;
+            if (RenderingOptions) {
+                foreach (STNodeOption op in this.BottomOptions) {
+                    float textWidth = g.MeasureString(op.Text, this.Font).Width;
+                    bottomPinsWidth += Math.Min(textWidth, this.MaxPinWidth) + H_PADDING;
+                }
             }
+            if (bottomPinsWidth > 0) bottomPinsWidth -= H_PADDING; // Remove last padding
             
             // Get width from Left/Right pin text
             SizeF szf_input = SizeF.Empty, szf_output = SizeF.Empty;
             if (RenderingOptions)
             {
-                foreach (STNodeOption v in this._InputOptions)
-                {
+                foreach (STNodeOption v in this._InputOptions) {
                     if (string.IsNullOrEmpty(v.Text)) continue;
                     SizeF szf = g.MeasureString(v.Text, this._Font);
                     if (szf.Width > szf_input.Width) szf_input = szf;
                 }
-                foreach (STNodeOption v in this._OutputOptions)
-                {
+                foreach (STNodeOption v in this._OutputOptions) {
                     if (string.IsNullOrEmpty(v.Text)) continue;
                     SizeF szf = g.MeasureString(v.Text, this._Font);
                     if (szf.Width > szf_output.Width) szf_output = szf;
@@ -1052,12 +1088,10 @@ namespace ST.Library.UI.NodeEditor
             
             // Get width from title
             int titleWidth = 0;
-            if (!string.IsNullOrEmpty(this.Title))
-            {
+            if (!string.IsNullOrEmpty(this.Title)) {
                  titleWidth = (int)g.MeasureString(this.Title, this._FontBold).Width;
             }
-            if (!string.IsNullOrEmpty(this._SubTitle))
-            {
+            if (!string.IsNullOrEmpty(this._SubTitle)) {
                 int subtitleWidth = (int)g.MeasureString(this._SubTitle, this.Font).Width;
                 if (subtitleWidth > titleWidth) titleWidth = subtitleWidth;
             }
@@ -1306,7 +1340,7 @@ namespace ST.Library.UI.NodeEditor
         /// Calculate the position of each option.
         /// </summary>
         protected virtual void SetOptionsLocation() {
-            // MODIFIED: Complete rewrite to position pins on all four sides.
+            // MODIFIED: Complete rewrite to position pins on all four sides and handle horizontal layout.
             
             if (Owner == null) return;
             
@@ -1327,6 +1361,7 @@ namespace ST.Library.UI.NodeEditor
             }
             
             rect.Y = topStartOffset; // Reset Y for right-side pins
+            nIndex = 0;
             foreach (STNodeOption op in this._OutputOptions) { // Right pins
                 if (op != STNodeOption.Empty) {
                     Point pt = this.OnSetOptionDotLocation(op, new Point(this.Right - op.DotSize / 2, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
@@ -1343,33 +1378,37 @@ namespace ST.Library.UI.NodeEditor
             using (var g = this.Owner.CreateGraphics())
             {
                 // Position Top Pins
-                float totalTopWidth = this.TopOptions.Cast<STNodeOption>().Sum(op => g.MeasureString(op.Text, this.Font).Width + H_PADDING);
+                float totalTopWidth = this.TopOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
+                if (totalTopWidth > 0) totalTopWidth -= H_PADDING;
                 float currentX = this.Left + (this.Width - totalTopWidth) / 2f;
                 
                 foreach(STNodeOption op in this.TopOptions)
                 {
                     if (op == STNodeOption.Empty) continue;
-                    float textWidth = g.MeasureString(op.Text, this.Font).Width;
-                    op.DotLeft = (int)(currentX + (textWidth / 2f) - (op.DotSize / 2f));
+                    float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
+                    float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
+                    
+                    op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = this.Top - (op.DotSize / 2);
-                    // The text rectangle is outside the node, above the dot
-                    op.TextRectangle = new Rectangle((int)currentX, this.Top - this._ItemHeight, (int)textWidth, this._ItemHeight);
-                    currentX += textWidth + H_PADDING;
+                    op.TextRectangle = new Rectangle((int)currentX, this.Top - this._ItemHeight, (int)pinVisibleWidth, this._ItemHeight);
+                    currentX += pinVisibleWidth + H_PADDING;
                 }
                 
                 // Position Bottom Pins
-                float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => g.MeasureString(op.Text, this.Font).Width + H_PADDING);
+                float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
+                if (totalBottomWidth > 0) totalBottomWidth -= H_PADDING;
                 currentX = this.Left + (this.Width - totalBottomWidth) / 2f;
                 
                 foreach(STNodeOption op in this.BottomOptions)
                 {
                     if (op == STNodeOption.Empty) continue;
-                    float textWidth = g.MeasureString(op.Text, this.Font).Width;
-                    op.DotLeft = (int)(currentX + (textWidth / 2f) - (op.DotSize / 2f));
+                    float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
+                    float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
+
+                    op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = this.Bottom - (op.DotSize / 2);
-                    // The text rectangle is outside the node, below the dot
-                    op.TextRectangle = new Rectangle((int)currentX, this.Bottom, (int)textWidth, this._ItemHeight);
-                    currentX += textWidth + H_PADDING;
+                    op.TextRectangle = new Rectangle((int)currentX, this.Bottom, (int)pinVisibleWidth, this._ItemHeight);
+                    currentX += pinVisibleWidth + H_PADDING;
                 }
             }
         }
