@@ -57,7 +57,6 @@ namespace ST.Library.UI.NodeEditor
                 if (_Owner != null) {
                     foreach (STNodeOption op in this._InputOptions.ToArray()) op.DisconnectAll();
                     foreach (STNodeOption op in this._OutputOptions.ToArray()) op.DisconnectAll();
-                    // ADDED: Disconnect top and bottom pins as well
                     foreach (STNodeOption op in this.TopOptions.ToArray()) op.DisconnectAll();
                     foreach (STNodeOption op in this.BottomOptions.ToArray()) op.DisconnectAll();
                 }
@@ -105,6 +104,18 @@ namespace ST.Library.UI.NodeEditor
             protected set {
                 _TitleColor = value;
                 this.Invalidate(new Rectangle(0, 0, this._Width, this._TitleHeight));
+            }
+        }
+        
+        private Color _PinAreaColor;
+        /// <summary>
+        /// Gets or sets the background color for the top and bottom pin areas.
+        /// </summary>
+        public Color PinAreaColor {
+            get { return _PinAreaColor; }
+            protected set {
+                _PinAreaColor = value;
+                this.Invalidate();
             }
         }
 
@@ -331,7 +342,8 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public Rectangle TitleRectangle {
             get {
-                return new Rectangle(this._Left, this._Top, this._Width, this._TitleHeight);
+                int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+                return new Rectangle(this._Left, this._Top + top_space, this._Width, this._TitleHeight);
             }
         }
 
@@ -376,7 +388,6 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public int OutputOptionsCount { get { return _OutputOptions.Count; } }
 
-        // MODIFIED: Added collections for Top and Bottom pins
         /// <summary>
         /// Get a collection of top options. (Treated as Inputs)
         /// </summary>
@@ -386,8 +397,7 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         protected internal STNodeOptionCollection BottomOptions { get; private set; }
         
-        // MODIFIED: Added configurable max width for horizontal pins
-        private int _maxPinWidth = 50;
+        private int _maxPinWidth = 65;
         /// <summary>
         /// Gets or sets the maximum width for an individual top or bottom pin's text area.
         /// When the editor is zoomed, the text will scale to fit and be clipped.
@@ -443,7 +453,7 @@ namespace ST.Library.UI.NodeEditor
             get { return _Font; }
             set {
                 if (value == _Font) return;
-                this._Font.Dispose();
+                if (this._Font != null) this._Font.Dispose();
                 _Font = value;
                 _FontBold = new Font(this._Font, FontStyle.Bold);
             }
@@ -536,13 +546,13 @@ namespace ST.Library.UI.NodeEditor
             this._MarkRectangle.Y = this._Top - 30;
             this._InputOptions = new STNodeOptionCollection(this, true);
             this._OutputOptions = new STNodeOptionCollection(this, false);
-            // MODIFIED: Initialize Top as Input and Bottom as Output to allow connections between them.
             this.TopOptions = new STNodeOptionCollection(this, true);
             this.BottomOptions = new STNodeOptionCollection(this, false);
             this._Controls = new STNodeControlCollection(this);
             this._BackColor = Color.FromArgb(200, 64, 64, 64);
             this._TitleColor = Color.FromArgb(200, Color.DodgerBlue);
             this._MarkColor = Color.FromArgb(200, Color.Brown);
+            this.PinAreaColor = Color.FromArgb(200, 80, 80, 80);
             this._Font = new Font("courier new", 8.25f);
 
             m_sf = new StringFormat();
@@ -760,19 +770,41 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="dt">Drawing tools</param>
         protected internal virtual void OnDrawNode(DrawingTools dt) {
             dt.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
-            //Fill background
-            if (this._BackColor.A != 0) {
-                dt.SolidBrush.Color = this._BackColor;
 
-                if (this.Owner.RoundedCornerRadius == -1)
-                {
-                    dt.Graphics.FillRectangle(dt.SolidBrush, this._Left, this._Top + this._TitleHeight, this._Width, this.Height - this._TitleHeight);
-                }
-                else
-                {
-                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, new Rectangle(this._Left, this._Top + this._TitleHeight, this._Width, this.Height - this._TitleHeight), Owner.RoundedCornerRadius);
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            int bottom_space = (RenderingOptions && this.BottomOptions.Count > 0) ? this._ItemHeight : 0;
+
+            // Draw the middle body background
+            dt.SolidBrush.Color = this._BackColor;
+            Rectangle bodyRect = new Rectangle(this.Left, this.Top + top_space, this.Width, this.Height - top_space - bottom_space);
+            dt.Graphics.FillRectangle(dt.SolidBrush, bodyRect);
+
+            // Draw top pin area background
+            if (top_space > 0) {
+                dt.SolidBrush.Color = this.PinAreaColor;
+                Rectangle topRect = new Rectangle(this.Left, this.Top, this.Width, top_space);
+                if (this.Owner.RoundedCornerRadius == -1) {
+                    dt.Graphics.FillRectangle(dt.SolidBrush, topRect);
+                } else {
+                    // This assumes a RoundedCornerUtils class exists as implied by original code.
+                    // It will draw a rectangle with only the top corners rounded.
+                    RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, topRect, Owner.RoundedCornerRadius, false);
                 }
             }
+
+            // Draw bottom pin area background
+            if (bottom_space > 0) {
+                dt.SolidBrush.Color = this.PinAreaColor;
+                Rectangle bottomRect = new Rectangle(this.Left, this.Bottom - bottom_space, this.Width, bottom_space);
+                if (this.Owner.RoundedCornerRadius == -1) {
+                    dt.Graphics.FillRectangle(dt.SolidBrush, bottomRect);
+                } else {
+                    // This will draw a rectangle with only the bottom corners rounded.
+                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bottomRect, Owner.RoundedCornerRadius);
+                }
+            }
+            
+            // Now draw the title and other body elements on top of the backgrounds
             this.OnDrawTitle(dt);
             this.OnDrawBody(dt);
         }
@@ -781,47 +813,38 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         /// <param name="dt">Drawing tools</param>
         protected virtual void OnDrawTitle(DrawingTools dt) {
+            Rectangle titleRect = this.TitleRectangle;
+
             m_sf.Alignment = StringAlignment.Center;
             m_sf.LineAlignment = StringAlignment.Center;
             Graphics g = dt.Graphics;
             SolidBrush brush = dt.SolidBrush;
+
+            // Draw the title bar background
             if (this._TitleColor.A != 0) {
                 brush.Color = this._TitleColor;
-                if (this.Owner.RoundedCornerRadius == -1)
-                {
-                    g.FillRectangle(brush, this.TitleRectangle);
-                }
-                else
-                {
-                    RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, InputOptionsCount + OutputOptionsCount == 0 || !RenderingOptions);
-                }
+                // Since the main background is already drawn, we just fill a simple rectangle.
+                g.FillRectangle(brush, titleRect);
             }
+
+            // Draw lock icons, adjusted to the new titleRect position
             if (this._LockOption) {
-                //dt.Pen.Color = this.ForeColor;
                 brush.Color = this._ForeColor;
-                int n = this._Top + this._TitleHeight / 2 - 5;
+                int n = titleRect.Y + this._TitleHeight / 2 - 5;
                 g.FillRectangle(dt.SolidBrush, this._Left + 4, n + 0, 2, 4);
                 g.FillRectangle(dt.SolidBrush, this._Left + 6, n + 0, 2, 2);
                 g.FillRectangle(dt.SolidBrush, this._Left + 8, n + 0, 2, 4);
                 g.FillRectangle(dt.SolidBrush, this._Left + 3, n + 4, 8, 6);
-                //g.DrawLine(dt.Pen, this._Left + 6, n + 5, this._Left + 6, n + 7);
-                //g.DrawRectangle(dt.Pen, this._Left + 3, n + 0, 6, 3);
-                //g.DrawRectangle(dt.Pen, this._Left + 2, n + 3, 8, 6);
-                //g.DrawLine(dt.Pen, this._Left + 6, n + 5, this._Left + 6, n + 7);
-
             }
             if (this._LockLocation) {
-                //dt.Pen.Color = this.ForeColor;
                 brush.Color = this._ForeColor;
-                int n = this._Top + this._TitleHeight / 2 - 5;
+                int n = titleRect.Y + this._TitleHeight / 2 - 5;
                 g.FillRectangle(brush, this.Right - 9, n, 4, 4);
                 g.FillRectangle(brush, this.Right - 11, n + 4, 8, 2);
                 g.FillRectangle(brush, this.Right - 8, n + 6, 2, 4);
-                //g.DrawLine(dt.Pen, this.Right - 10, n + 6, this.Right - 4, n + 6);
-                //g.DrawLine(dt.Pen, this.Right - 10, n, this.Right - 4, n);
-                //g.DrawLine(dt.Pen, this.Right - 11, n + 6, this.Right - 3, n + 6);
-                //g.DrawLine(dt.Pen, this.Right - 7, n + 7, this.Right - 7, n + 9);
             }
+
+            // Draw Title and Subtitle text
             if (!string.IsNullOrEmpty(this._Title) && this._ForeColor.A != 0) {
                 brush.Color = this._ForeColor;
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
@@ -830,7 +853,7 @@ namespace ST.Library.UI.NodeEditor
                 if (!string.IsNullOrEmpty(this._SubTitle))
                     title += "\n ";
 
-                g.DrawString(title, this._FontBold, brush, this.TitleRectangle, m_sf);
+                g.DrawString(title, this._FontBold, brush, titleRect, m_sf);
             }
             if (!string.IsNullOrEmpty(this._SubTitle) && this._ForeColor.A != 0)
             {
@@ -841,34 +864,32 @@ namespace ST.Library.UI.NodeEditor
                 if (!string.IsNullOrEmpty(this._Title))
                     subTitle = " \n" + subTitle;
 
-                g.DrawString(subTitle, this._Font, brush, this.TitleRectangle, m_sf);
+                g.DrawString(subTitle, this._Font, brush, titleRect, m_sf);
             }
         }
-        /// <summary>
-        /// Draw the main part of Node, remove the title part.
-        /// </summary>
-        /// <param name="dt">Drawing tools</param>
         protected virtual void OnDrawBody(DrawingTools dt) {
-            //SolidBrush brush = dt.SolidBrush;
-            
-            if (this._Controls.Count != 0) {    //Draw child control
-                //Align the origin of the coordinates with the node.
-                //dt.Graphics.ResetTransform();
-                dt.Graphics.TranslateTransform(this._Left, this._Top + this._TitleHeight);
-                Point pt = Point.Empty;         //The amount of offset currently needed 
-                Point pt_last = Point.Empty;    //The coordinates of the last control relative to the node
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            if (this._Controls.Count != 0) {
+                dt.Graphics.TranslateTransform(this._Left, this._Top + top_space + this._TitleHeight);
+                Point pt = Point.Empty;
+                Point pt_last = Point.Empty;
                 foreach (STNodeControl v in this._Controls) {
                     if (!v.Visible) continue;
                     pt.X = v.Left - pt_last.X;
                     pt.Y = v.Top - pt_last.Y;
                     pt_last = v.Location;
-                    dt.Graphics.TranslateTransform(pt.X, pt.Y); //Move the origin coordinate to the control position
+                    dt.Graphics.TranslateTransform(pt.X, pt.Y);
                     dt.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
                     v.OnPaint(dt);
                 }
-                //dt.Graphics.TranslateTransform(-pt_last.X, -pt_last.Y); Restore coordinates
-                dt.Graphics.TranslateTransform(-this._Left - pt_last.X, -this._Top - this._TitleHeight - pt_last.Y);
-                //dt.Graphics.
+                dt.Graphics.TranslateTransform(-this._Left - pt_last.X, -this._Top - top_space - this._TitleHeight - pt_last.Y);
+            }
+
+            foreach (STNodeOption op in this.TopOptions)
+            {
+                if (op == STNodeOption.Empty) continue;
+                this.OnDrawOptionDot(dt, op);
+                this.OnDrawOptionText(dt, op); // Text for top pins is now drawn here.
             }
 
             foreach (STNodeOption op in this._InputOptions)
@@ -879,14 +900,6 @@ namespace ST.Library.UI.NodeEditor
             }
 
             foreach (STNodeOption op in this._OutputOptions)
-            {
-                if (op == STNodeOption.Empty) continue;
-                this.OnDrawOptionDot(dt, op);
-                this.OnDrawOptionText(dt, op);
-            }
-            
-            // ADDED: Draw top and bottom pins
-            foreach (STNodeOption op in this.TopOptions)
             {
                 if (op == STNodeOption.Empty) continue;
                 this.OnDrawOptionDot(dt, op);
@@ -1012,7 +1025,11 @@ namespace ST.Library.UI.NodeEditor
             
             if (isHorizontalPin) {
                 m_sf.Alignment = StringAlignment.Center;
-                m_sf.LineAlignment = this.TopOptions.Contains(op) ? StringAlignment.Far : StringAlignment.Near;
+                if (this.TopOptions.Contains(op)) {
+                    m_sf.LineAlignment = StringAlignment.Near;
+                } else {
+                    m_sf.LineAlignment = StringAlignment.Far;
+                }
             } else {
                 m_sf.Alignment = op.IsInput ? StringAlignment.Near : StringAlignment.Far;
                 m_sf.LineAlignment = StringAlignment.Center;
@@ -1045,57 +1062,40 @@ namespace ST.Library.UI.NodeEditor
             brush.Color = op.TextColor;
             g.DrawString(op.Text, fontToUse, brush, textRect, m_sf);
             
-            // If we created a temporary font, we must dispose of it to avoid memory leaks.
             if (fontCreated) {
                 fontToUse.Dispose();
             }
             
-            // Reset string format to default for other drawing operations.
             m_sf.LineAlignment = StringAlignment.Center;
         }
-        /// <summary>
-        /// Occurs when calculating Option connection point position.
-        /// </summary>
-        /// <param name="op">Option to be calculated</param>
-        /// <param name="pt">Automatically calculated position</param>
-        /// <param name="nIndex">Index of the current Option</param>
-        /// <returns>New location</returns>
         protected virtual Point OnSetOptionDotLocation(STNodeOption op, Point pt, int nIndex) {
             return pt;
         }
-        /// <summary>
-        /// Occurs when calculating the Option text area.
-        /// </summary>
-        /// <param name="op">Option to be calculated</param>
-        /// <param name="rect">Automatically calculated area</param>
-        /// <param name="nIndex">Index of the current Option</param>
-        /// <returns>New area</returns>
         protected virtual Rectangle OnSetOptionTextRectangle(STNodeOption op, Rectangle rect, int nIndex) {
             return rect;
         }
-        /// <summary>
-        /// Get the default size required by the current STNode.
-        /// The returned size does not limit the drawing area, it can still be drawn outside this area.
-        /// But it will not be accepted by STNodeEditor and trigger the corresponding event.
-        /// </summary>
-        /// <param name="g">Drawing panel</param>
-        /// <returns>Calculated size</returns>
         protected virtual Size GetDefaultNodeSize(Graphics g) {
-            // MODIFIED: Complete rewrite to handle horizontal and vertical pins with max width
-            
-            // 1. Calculate Height based on vertical (Left/Right) pins
             int nInputHeight = 0, nOutputHeight = 0;
             if (RenderingOptions)
             {
                 foreach (STNodeOption op in this._InputOptions) nInputHeight += this._ItemHeight;
                 foreach (STNodeOption op in this._OutputOptions) nOutputHeight += this._ItemHeight;
             }
-            int nHeight = this._TitleHeight + Math.Max(nInputHeight, nOutputHeight);
 
-            // 2. Calculate Width 
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+
+            int titleSectionHeight = 20;
+            if (!string.IsNullOrEmpty(this._SubTitle)) titleSectionHeight = 35;
+            this.TitleHeight = titleSectionHeight; // TitleHeight is now just for the title itself.
+
+            int nHeight = top_space + this._TitleHeight + Math.Max(nInputHeight, nOutputHeight);
+            if (RenderingOptions && this.BottomOptions.Count > 0)
+            {
+                nHeight += this._ItemHeight;
+            }
+            
             const int H_PADDING = 15;
 
-            // Get width from Top/Bottom pins, respecting MaxPinWidth
             float topPinsWidth = 0;
             if (RenderingOptions) {
                 foreach (STNodeOption op in this.TopOptions) {
@@ -1269,7 +1269,9 @@ namespace ST.Library.UI.NodeEditor
 
         protected internal virtual void OnMouseDown(MouseEventArgs e) {
             Point pt = e.Location;
-            pt.Y -= this._TitleHeight;
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            pt.Y -= (top_space + this._TitleHeight);
+
             for (int i = this._Controls.Count - 1; i >= 0; i--) {
                 var c = this._Controls[i];
                 if (c.DisplayRectangle.Contains(pt)) {
@@ -1291,7 +1293,9 @@ namespace ST.Library.UI.NodeEditor
 
         protected internal virtual void OnMouseMove(MouseEventArgs e) {
             Point pt = e.Location;
-            pt.Y -= this._TitleHeight;
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            pt.Y -= (top_space + this._TitleHeight);
+
             if (m_ctrl_down != null) {
                 if (m_ctrl_down.Enabled && m_ctrl_down.Visible)
                     m_ctrl_down.OnMouseMove(new MouseEventArgs(e.Button, e.Clicks, e.X - m_ctrl_down.Left, pt.Y - m_ctrl_down.Top, e.Delta));
@@ -1315,14 +1319,12 @@ namespace ST.Library.UI.NodeEditor
 
         protected internal virtual void OnMouseUp(MouseEventArgs e) {
             Point pt = e.Location;
-            pt.Y -= this._TitleHeight;
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            pt.Y -= (top_space + this._TitleHeight);
+
             if (m_ctrl_down != null && m_ctrl_down.Enabled && m_ctrl_down.Visible) {
                 m_ctrl_down.OnMouseUp(new MouseEventArgs(e.Button, e.Clicks, e.X - m_ctrl_down.Left, pt.Y - m_ctrl_down.Top, e.Delta));
             }
-            //if (m_ctrl_active != null) {
-            //    m_ctrl_active.OnMouseUp(new MouseEventArgs(e.Button, e.Clicks,
-            //        e.X - m_ctrl_active.Left, pt.Y - m_ctrl_active.Top, e.Delta));
-            //}
             m_ctrl_down = null;
         }
 
@@ -1333,14 +1335,18 @@ namespace ST.Library.UI.NodeEditor
 
         protected internal virtual void OnMouseClick(MouseEventArgs e) {
             Point pt = e.Location;
-            pt.Y -= this._TitleHeight;
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            pt.Y -= (top_space + this._TitleHeight);
+
             if (m_ctrl_active != null && m_ctrl_active.Enabled && m_ctrl_active.Visible)
                 m_ctrl_active.OnMouseClick(new MouseEventArgs(e.Button, e.Clicks, e.X - m_ctrl_active.Left, pt.Y - m_ctrl_active.Top, e.Delta));
         }
 
         protected internal virtual void OnMouseWheel(MouseEventArgs e) {
             Point pt = e.Location;
-            pt.Y -= this._TitleHeight;
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            pt.Y -= (top_space + this._TitleHeight);
+
             if (m_ctrl_hover != null && m_ctrl_active != null && m_ctrl_active.Enabled && m_ctrl_hover.Visible) {
                 m_ctrl_hover.OnMouseWheel(new MouseEventArgs(e.Button, e.Clicks, e.X - m_ctrl_hover.Left, pt.Y - m_ctrl_hover.Top, e.Delta));
                 return;
@@ -1385,53 +1391,63 @@ namespace ST.Library.UI.NodeEditor
         /// Calculate the position of each option.
         /// </summary>
         protected virtual void SetOptionsLocation() {
-            // MODIFIED: Complete rewrite to position pins on all four sides and handle horizontal layout.
-            
             if (Owner == null) return;
+
+            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
+            int body_start_y = this._Top + top_space + this._TitleHeight;
             
             int nIndex = 0;
-            int topStartOffset = RenderingOptions ? this._Top + this._TitleHeight : this._Top;
             
-            // Left pins (Inputs)
-            Rectangle rect = new Rectangle(this.Left + 10, topStartOffset, this._Width - 20, this._ItemHeight);
+            Rectangle rect_in = new Rectangle(this.Left, body_start_y, this._Width, this._ItemHeight);
             foreach (STNodeOption op in this._InputOptions) {
                 if (op != STNodeOption.Empty) {
-                    int x = this.Left - op.DotSize / 2; // Default for square/circle
+                    int x = this.Left - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
                         x = this.Left - op.DotSize;
                     }
-                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
-                    op.TextRectangle = this.OnSetOptionTextRectangle(op, rect, nIndex);
+                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect_in.Y + (rect_in.Height - op.DotSize) / 2), nIndex);
+                    
+                    Rectangle textRect = new Rectangle(this.Left + 10, rect_in.Y, this._Width - 20, this._ItemHeight);
+                    if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
+                         textRect.X = this.Left + 4;
+                    }
+
+                    op.TextRectangle = this.OnSetOptionTextRectangle(op, textRect, nIndex);
                     op.DotLeft = pt.X;
                     op.DotTop = pt.Y;
                 }
-                rect.Y += this._ItemHeight;
+                rect_in.Y += this._ItemHeight;
                 nIndex++;
             }
             
-            // Right pins (Outputs)
-            rect.Y = topStartOffset;
+            Rectangle rect_out = new Rectangle(this.Left, body_start_y, this._Width, this._ItemHeight);
             nIndex = 0;
             foreach (STNodeOption op in this._OutputOptions) {
                 if (op != STNodeOption.Empty) {
-                    int x = this.Right - op.DotSize / 2; // Default for square/circle
+                    int x = this.Right - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
                         x = this.Right;
                     }
-                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect.Y + (rect.Height - op.DotSize) / 2), nIndex);
-                    op.TextRectangle = this.OnSetOptionTextRectangle(op, rect, nIndex);
+                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect_out.Y + (rect_out.Height - op.DotSize) / 2), nIndex);
+                    
+                    Rectangle textRect = new Rectangle(this.Left + 10, rect_out.Y, this._Width - 20, this._ItemHeight);
+                    if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
+                         textRect.Width = this._Width - 14;
+                    }
+
+                    op.TextRectangle = this.OnSetOptionTextRectangle(op, textRect, nIndex);
                     op.DotLeft = pt.X;
                     op.DotTop = pt.Y;
                 }
-                rect.Y += this._ItemHeight;
+                rect_out.Y += this._ItemHeight;
                 nIndex++;
             }
             
-            // 2. Position Top and Bottom pins (horizontally and centered)
             const int H_PADDING = 15;
+            const int V_PADDING = 2;
+
             using (var g = this.Owner.CreateGraphics())
             {
-                // Position Top Pins
                 float totalTopWidth = this.TopOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
                 if (totalTopWidth > 0) totalTopWidth -= H_PADDING;
                 float currentX = this.Left + (this.Width - totalTopWidth) / 2f;
@@ -1442,20 +1458,17 @@ namespace ST.Library.UI.NodeEditor
                     float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
                     float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
                     
-                    int y = this.Top - op.DotSize / 2; // Default
-                    if (op.Style == PinStyle.ArrowUp) {
-                        y = this.Top - op.DotSize;
-                    } else if (op.Style == PinStyle.ArrowDown) {
-                        y = this.Top;
-                    }
+                    int y = this.Top + this._ItemHeight / 2 - op.DotSize / 2;
+                    if (op.Style == PinStyle.ArrowUp) y = this.Top - op.DotSize; 
+                    else if (op.Style == PinStyle.ArrowDown) y = this.Top + this._ItemHeight - op.DotSize;
 
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = y;
-                    op.TextRectangle = new Rectangle((int)currentX, this.Top - this._ItemHeight, (int)pinVisibleWidth, this._ItemHeight);
+
+                    op.TextRectangle = new Rectangle((int)currentX, this.Top + V_PADDING, (int)pinVisibleWidth, this._ItemHeight);
                     currentX += pinVisibleWidth + H_PADDING;
                 }
                 
-                // Bottom Pins
                 float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
                 if (totalBottomWidth > 0) totalBottomWidth -= H_PADDING;
                 currentX = this.Left + (this.Width - totalBottomWidth) / 2f;
@@ -1466,16 +1479,14 @@ namespace ST.Library.UI.NodeEditor
                     float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
                     float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
 
-                    int y = this.Bottom - op.DotSize / 2; // Default
-                    if (op.Style == PinStyle.ArrowDown) {
-                        y = this.Bottom;
-                    } else if (op.Style == PinStyle.ArrowUp) {
-                        y = this.Bottom - op.DotSize;
-                    }
+                    int y = this.Bottom - op.DotSize / 2;
+                    if (op.Style == PinStyle.ArrowDown) y = this.Bottom;
+                    else if (op.Style == PinStyle.ArrowUp) y = this.Bottom - op.DotSize;
 
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = y;
-                    op.TextRectangle = new Rectangle((int)currentX, this.Bottom, (int)pinVisibleWidth, this._ItemHeight);
+
+                    op.TextRectangle = new Rectangle((int)currentX, this.Bottom - this._ItemHeight, (int)pinVisibleWidth, this._ItemHeight - V_PADDING);
                     currentX += pinVisibleWidth + H_PADDING;
                 }
             }

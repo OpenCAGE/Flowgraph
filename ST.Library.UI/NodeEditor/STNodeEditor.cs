@@ -725,7 +725,6 @@ namespace ST.Library.UI.NodeEditor
                     endPt = m_pt_dot_down;
                 }
                 
-                // MODIFIED: Reverted to simpler S-curve logic, but with directionality.
                 bool isVertical = m_option_down.Owner.TopOptions.Contains(m_option_down) ||
                                   m_option_down.Owner.BottomOptions.Contains(m_option_down);
 
@@ -1206,8 +1205,6 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         /// <param name="dt">Drawing tools</param>
         protected virtual void OnDrawConnectedLine(DrawingTools dt) {
-            // MODIFIED: This whole method is updated to handle drawing lines from all pin types
-            // and to select the correct bezier curve style (horizontal vs vertical).
             Graphics g = dt.Graphics;
             g.SmoothingMode = SmoothingMode.HighQuality;
             m_p_line_hover.Color = Color.FromArgb(50, 0, 0, 0);
@@ -1720,7 +1717,6 @@ namespace ST.Library.UI.NodeEditor
             return m_mi;
         }
 
-        // MODIFIED: All drawing logic reverted to these simpler S-curve helpers.
         private void DrawHorizontalBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f) {
             float n = (Math.Abs(ptStart.X - ptEnd.X) * f);
             if (this._Curvature != 0 && n < 30) n = 30;
@@ -1827,7 +1823,6 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="pt">Coordinates in the canvas</param>
         /// <returns>Data found</returns>
         public NodeFindInfo FindNodeFromPoint(PointF pt) {
-            // MODIFIED: Added checks for Top and Bottom pins.
             m_find.Node = null; m_find.NodeOption = null; m_find.Mark = null;
             for (int i = this._Nodes.Count - 1; i >= 0; i--) {
                 var currentNode = this._Nodes[i];
