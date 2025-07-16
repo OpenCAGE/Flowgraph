@@ -388,15 +388,32 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public int OutputOptionsCount { get { return _OutputOptions.Count; } }
 
+        private STNodeOptionCollection _TopOptions;
         /// <summary>
-        /// Get a collection of top options. (Treated as Inputs)
+        /// Get a collection of top options. (top pins)
         /// </summary>
-        protected internal STNodeOptionCollection TopOptions { get; private set; }
+        protected internal STNodeOptionCollection TopOptions
+        {
+            get { return _TopOptions; }
+        }
         /// <summary>
-        /// Get a collection of bottom options. (Treated as Outputs)
+        /// Get the number of top option sets.
         /// </summary>
-        protected internal STNodeOptionCollection BottomOptions { get; private set; }
-        
+        public int TopOptionsCount { get { return _TopOptions.Count; } }
+
+        private STNodeOptionCollection _BottomOptions;
+        /// <summary>
+        /// Get bottom options. (bottom pins)
+        /// </summary>
+        protected internal STNodeOptionCollection BottomOptions
+        {
+            get { return _BottomOptions; }
+        }
+        /// <summary>
+        /// Get the number of bottom options.
+        /// </summary>
+        public int BottomOptionsCount { get { return _BottomOptions.Count; } }
+
         private int _maxPinWidth = 65;
         /// <summary>
         /// Gets or sets the maximum width for an individual top or bottom pin's text area.
@@ -546,8 +563,8 @@ namespace ST.Library.UI.NodeEditor
             this._MarkRectangle.Y = this._Top - 30;
             this._InputOptions = new STNodeOptionCollection(this, true);
             this._OutputOptions = new STNodeOptionCollection(this, false);
-            this.TopOptions = new STNodeOptionCollection(this, true);
-            this.BottomOptions = new STNodeOptionCollection(this, false);
+            this._TopOptions = new STNodeOptionCollection(this, true);
+            this._BottomOptions = new STNodeOptionCollection(this, false);
             this._Controls = new STNodeControlCollection(this);
             this._BackColor = Color.FromArgb(200, 64, 64, 64);
             this._TitleColor = Color.FromArgb(200, Color.DodgerBlue);
@@ -664,6 +681,18 @@ namespace ST.Library.UI.NodeEditor
             var inputs = this.OutputOptions.ToArray().ToList().FindAll(o => o.ShortGUID == option);
             foreach (var input in inputs)
                 this.OutputOptions.Remove(input);
+        }
+        public void RemoveTopOption(ShortGuid option)
+        {
+            var inputs = this.TopOptions.ToArray().ToList().FindAll(o => o.ShortGUID == option);
+            foreach (var input in inputs)
+                this.TopOptions.Remove(input);
+        }
+        public void RemoveBottomOption(ShortGuid option)
+        {
+            var inputs = this.BottomOptions.ToArray().ToList().FindAll(o => o.ShortGUID == option);
+            foreach (var input in inputs)
+                this.BottomOptions.Remove(input);
         }
 
         //private int m_nItemHeight = 30;
@@ -1516,6 +1545,18 @@ namespace ST.Library.UI.NodeEditor
             if (!this._LetGetOptions) return null;
             STNodeOption[] ops = new STNodeOption[this._OutputOptions.Count];
             for (int i = 0; i < this._OutputOptions.Count; i++) ops[i] = this._OutputOptions[i];
+            return ops;
+        }
+        public STNodeOption[] GetTopOptions() {
+            if (!this._LetGetOptions) return null;
+            STNodeOption[] ops = new STNodeOption[this._TopOptions.Count];
+            for (int i = 0; i < this._TopOptions.Count; i++) ops[i] = this._TopOptions[i];
+            return ops;
+        }
+        public STNodeOption[] GetBottomOptions() {
+            if (!this._LetGetOptions) return null;
+            STNodeOption[] ops = new STNodeOption[this._BottomOptions.Count];
+            for (int i = 0; i < this._BottomOptions.Count; i++) ops[i] = this._BottomOptions[i];
             return ops;
         }
         public void SetSelected(bool bSelected, bool bRedraw) {
