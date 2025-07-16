@@ -629,7 +629,7 @@ namespace ST.Library.UI.NodeEditor
             return newOp;
         }
 
-        public STNodeOption AddTopOption(ShortGuid option, bool unique = false, PinStyle style = PinStyle.ArrowUp)
+        public STNodeOption AddTopOption(ShortGuid option, PinStyle style = PinStyle.ArrowDown, bool unique = false)
         {
             if (!unique)
                 for (int i = 0; i < this.TopOptions.Count; i++)
@@ -1459,8 +1459,8 @@ namespace ST.Library.UI.NodeEditor
                     float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
                     
                     int y = this.Top + this._ItemHeight / 2 - op.DotSize / 2;
-                    if (op.Style == PinStyle.ArrowUp) y = this.Top - op.DotSize; 
-                    else if (op.Style == PinStyle.ArrowDown) y = this.Top + this._ItemHeight - op.DotSize;
+                    if (op.Style == PinStyle.ArrowUp || op.Style == PinStyle.ArrowDown) 
+                        y = this.Top - this._ItemHeight + op.DotSize;
 
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = y;
@@ -1480,8 +1480,8 @@ namespace ST.Library.UI.NodeEditor
                     float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
 
                     int y = this.Bottom - op.DotSize / 2;
-                    if (op.Style == PinStyle.ArrowDown) y = this.Bottom;
-                    else if (op.Style == PinStyle.ArrowUp) y = this.Bottom - op.DotSize;
+                    if (op.Style == PinStyle.ArrowDown || op.Style == PinStyle.ArrowUp) 
+                        y = this.Bottom;
 
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = y;
