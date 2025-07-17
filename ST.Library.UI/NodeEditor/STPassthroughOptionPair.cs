@@ -170,19 +170,19 @@ namespace ST.Library.UI.NodeEditor
             {
                 if (op == STNodeOption.Empty) return ConnectionStatus.EmptyOption;
                 if (this.DataType != typeof(object)) return base.CanConnect(op);
-                if (this.IsInput == op.IsInput) return ConnectionStatus.SameInputOrOutput;
+                if (this.Location == op.Location) return ConnectionStatus.SameInputOrOutput; //todo: more sanity here?
                 if (op.Owner == null || this.Owner == null) return ConnectionStatus.NoOwner;
                 if (!this.Owner.Owner.AllowSameOwnerConnections && op.Owner == this.Owner) return ConnectionStatus.SameOwner;
                 if (this.Owner.LockOption || op.Owner.LockOption) return ConnectionStatus.Locked;
                 if (this.IsSingle && m_hs_connected.Count == 1) return ConnectionStatus.SingleOption;
                 if (!this.Owner.Owner.AllowNodeGraphLoops)
                 {
-                    if (op.IsInput && STNodeEditor.CanFindNodePath(op.Owner, this.Owner)) return ConnectionStatus.Loop;
+                    if (op.Location == PinLocation.Left && STNodeEditor.CanFindNodePath(op.Owner, this.Owner)) return ConnectionStatus.Loop;
                 }
                 if (m_hs_connected.Contains(op)) return ConnectionStatus.Exists;
                 if (op.DataType == typeof(object)) return ConnectionStatus.ErrorType;
 
-                if (!this.IsInput) return ConnectionStatus.Connected;
+                if (this.Location != PinLocation.Left) return ConnectionStatus.Connected;
                 foreach (STNodeOption owner_input in this.Owner.InputOptions)
                 {
                     foreach (STNodeOption o in owner_input.ConnectedOption)

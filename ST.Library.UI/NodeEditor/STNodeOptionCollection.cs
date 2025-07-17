@@ -22,12 +22,12 @@ namespace ST.Library.UI.NodeEditor
         private STNodeOption[] m_options;
         private STNode m_owner;
 
-        private bool m_isInput;     //Whether the current collection is stored is the input point.
+        private PinLocation m_location;
 
-        internal STNodeOptionCollection(STNode owner, bool isInput) {
+        internal STNodeOptionCollection(STNode owner, PinLocation location) {
             if (owner == null) throw new ArgumentNullException("Owner cannot be empty.");
             m_owner = owner;
-            m_isInput = isInput;
+            m_location = location;
             m_options = new STNodeOption[4];
         }
 
@@ -45,7 +45,7 @@ namespace ST.Library.UI.NodeEditor
             if (-1 == nIndex) {
                 nIndex = this._Count;
                 option.Owner = m_owner;
-                option.IsInput = m_isInput;
+                option.Location = m_location;
                 m_options[this._Count++] = option;
                 this.Invalidate();
             }
@@ -59,7 +59,7 @@ namespace ST.Library.UI.NodeEditor
                 if (op == null) throw new ArgumentNullException("Add object cannot be empty.");
                 if (-1 == this.IndexOf(op)) {
                     op.Owner = m_owner;
-                    op.IsInput = m_isInput;
+                    op.Location = m_location;
                     m_options[this._Count++] = op;
                 }
             }

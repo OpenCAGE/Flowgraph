@@ -36,13 +36,13 @@ namespace ST.Library.UI.NodeEditor
             get { return _IsSingle; }
         }
 
-        private bool _IsInput;
+        private PinLocation _Location;
         /// <summary>
         /// Get whether the current Option is an input option.
         /// </summary>
-        public bool IsInput {
-            get { return _IsInput; }
-            internal set { _IsInput = value; }
+        public PinLocation Location {
+            get { return _Location; }
+            internal set { _Location = value; }
         }
 
         private Color _TextColor = Color.White;
@@ -390,17 +390,17 @@ namespace ST.Library.UI.NodeEditor
         private ConnectionStatus CanConnectInternal(STNodeOption op)
         {
             if (this == STNodeOption.Empty || op == STNodeOption.Empty) return ConnectionStatus.EmptyOption;
-            if (this._IsInput == op.IsInput) return ConnectionStatus.SameInputOrOutput;
+            if (this.Location == op.Location) return ConnectionStatus.SameInputOrOutput; //todo: sanity logic here
             if (op.Owner == null || this._Owner == null) return ConnectionStatus.NoOwner;
             if (!this.Owner.Owner.AllowSameOwnerConnections && op.Owner == this._Owner) return ConnectionStatus.SameOwner;
             if (this._Owner.LockOption || op._Owner.LockOption) return ConnectionStatus.Locked;
             if (this._IsSingle && m_hs_connected.Count == 1) return ConnectionStatus.SingleOption;
             if (!this.Owner.Owner.AllowNodeGraphLoops)
             {
-                if (op.IsInput && STNodeEditor.CanFindNodePath(op.Owner, this._Owner)) return ConnectionStatus.Loop;
+                if (op.Location == PinLocation.Left && STNodeEditor.CanFindNodePath(op.Owner, this._Owner)) return ConnectionStatus.Loop;
             }
             if (m_hs_connected.Contains(op)) return ConnectionStatus.Exists;
-            if (this._IsInput && op._DataType != this._DataType && !op._DataType.IsSubclassOf(this._DataType)) return ConnectionStatus.ErrorType;
+            if (this.Location == PinLocation.Left && op._DataType != this._DataType && !op._DataType.IsSubclassOf(this._DataType)) return ConnectionStatus.ErrorType;
             return ConnectionStatus.Connected;
         }
         /// <summary>
@@ -500,7 +500,7 @@ namespace ST.Library.UI.NodeEditor
             if (this._DataType == null) return false;
             bool b = m_hs_connected.Add(op);
             this.OnConnected(new STNodeOptionEventArgs(bSponsor, op, ConnectionStatus.Connected));
-            if (this._IsInput) this.OnDataTransfer(new STNodeOptionEventArgs(bSponsor, op, ConnectionStatus.Connected));
+            if (this.Location == PinLocation.Left) this.OnDataTransfer(new STNodeOptionEventArgs(bSponsor, op, ConnectionStatus.Connected));
             return b;
         }
 
@@ -509,7 +509,7 @@ namespace ST.Library.UI.NodeEditor
             bool b = false;
             if (m_hs_connected.Contains(op)) {
                 b = m_hs_connected.Remove(op);
-                if (this._IsInput) this.OnDataTransfer(new STNodeOptionEventArgs(bSponsor, op, ConnectionStatus.Disconnected));
+                if (this.Location == PinLocation.Left) this.OnDataTransfer(new STNodeOptionEventArgs(bSponsor, op, ConnectionStatus.Disconnected));
                 this.OnDisconnected(new STNodeOptionEventArgs(bSponsor, op, ConnectionStatus.Disconnected));
             }
             return b;

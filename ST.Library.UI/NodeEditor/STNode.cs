@@ -43,6 +43,7 @@ SOFTWARE.
 namespace ST.Library.UI.NodeEditor
 {
     public enum PinStyle { Square, Circle, ArrowUp, ArrowDown, ArrowLeft, ArrowRight }
+    public enum PinLocation { Top, Bottom, Left, Right }
 
     public class STNode
     {
@@ -561,10 +562,10 @@ namespace ST.Library.UI.NodeEditor
             this._Left = this._MarkRectangle.X = m_static_pt_init.X;
             this._Top = m_static_pt_init.Y;
             this._MarkRectangle.Y = this._Top - 30;
-            this._InputOptions = new STNodeOptionCollection(this, true);
-            this._OutputOptions = new STNodeOptionCollection(this, false);
-            this._TopOptions = new STNodeOptionCollection(this, true);
-            this._BottomOptions = new STNodeOptionCollection(this, false);
+            this._InputOptions = new STNodeOptionCollection(this, PinLocation.Left);
+            this._OutputOptions = new STNodeOptionCollection(this, PinLocation.Right);
+            this._TopOptions = new STNodeOptionCollection(this, PinLocation.Top);
+            this._BottomOptions = new STNodeOptionCollection(this, PinLocation.Bottom);
             this._Controls = new STNodeControlCollection(this);
             this._BackColor = Color.FromArgb(200, 64, 64, 64);
             this._TitleColor = Color.FromArgb(200, Color.DodgerBlue);
@@ -646,7 +647,7 @@ namespace ST.Library.UI.NodeEditor
             return newOp;
         }
 
-        public STNodeOption AddTopOption(ShortGuid option, PinStyle style = PinStyle.ArrowDown, bool unique = false)
+        public STNodeOption AddTopOption(ShortGuid option, PinStyle style = PinStyle.ArrowUp, bool unique = false)
         {
             if (!unique)
                 for (int i = 0; i < this.TopOptions.Count; i++)
@@ -918,17 +919,17 @@ namespace ST.Library.UI.NodeEditor
             {
                 if (op == STNodeOption.Empty) continue;
                 this.OnDrawOptionDot(dt, op);
-                this.OnDrawOptionText(dt, op); // Text for top pins is now drawn here.
+                this.OnDrawOptionText(dt, op);
             }
 
-            foreach (STNodeOption op in this._InputOptions)
+            foreach (STNodeOption op in this.InputOptions)
             {
                 if (op == STNodeOption.Empty) continue;
                 this.OnDrawOptionDot(dt, op);
                 this.OnDrawOptionText(dt, op);
             }
 
-            foreach (STNodeOption op in this._OutputOptions)
+            foreach (STNodeOption op in this.OutputOptions)
             {
                 if (op == STNodeOption.Empty) continue;
                 this.OnDrawOptionDot(dt, op);
@@ -1054,13 +1055,9 @@ namespace ST.Library.UI.NodeEditor
             
             if (isHorizontalPin) {
                 m_sf.Alignment = StringAlignment.Center;
-                if (this.TopOptions.Contains(op)) {
-                    m_sf.LineAlignment = StringAlignment.Near;
-                } else {
-                    m_sf.LineAlignment = StringAlignment.Far;
-                }
+                m_sf.LineAlignment = op.Location == PinLocation.Top ? StringAlignment.Near : StringAlignment.Far;
             } else {
-                m_sf.Alignment = op.IsInput ? StringAlignment.Near : StringAlignment.Far;
+                m_sf.Alignment = op.Location == PinLocation.Left ? StringAlignment.Near : StringAlignment.Far;
                 m_sf.LineAlignment = StringAlignment.Center;
             }
             
@@ -1510,7 +1507,7 @@ namespace ST.Library.UI.NodeEditor
 
                     int y = this.Bottom - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowDown || op.Style == PinStyle.ArrowUp) 
-                        y = this.Bottom;
+                        y = this.Bottom; //todo ; this is wrong
 
                     op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
                     op.DotTop = y;

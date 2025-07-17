@@ -719,7 +719,7 @@ namespace ST.Library.UI.NodeEditor
                 PointF startPt = m_pt_dot_down;
                 PointF endPt = m_pt_in_canvas;
                 // Invert flow if the source is an input pin
-                if (m_option_down.IsInput)
+                if (m_option_down.Location == PinLocation.Left) //todo: perhaps OR TOP here to fix flipping?
                 {
                     startPt = m_pt_in_canvas;
                     endPt = m_pt_dot_down;
@@ -963,7 +963,7 @@ namespace ST.Library.UI.NodeEditor
                     if (nfi.NodeOption != null) {
                         if (CanOptionsConnect(m_option_down, nfi.NodeOption))
                         {
-                            if (m_option_down.IsInput)
+                            if (m_option_down.Location == PinLocation.Left)
                                 nfi.NodeOption.ConnectOption(m_option_down);
                             else
                                 m_option_down.ConnectOption(nfi.NodeOption);
