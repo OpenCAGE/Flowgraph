@@ -615,21 +615,11 @@ namespace ST.Library.UI.NodeEditor
             Location = location;
         }
 
-        public void AddOptions(ShortGuid[] inputOptions, ShortGuid[] outputOptions)
-        {
-            if (inputOptions != null)
-                for (int i = 0; i < inputOptions.Length; i++)
-                    AddInputOption(inputOptions[i]);
-            if (outputOptions != null)
-                for (int i = 0; i < outputOptions.Length; i++)
-                    AddOutputOption(outputOptions[i]);
-        }
-
         public STNodeOption AddInputOption(ShortGuid option, bool unique = false)
         {
             if (!unique)
                 for (int i = 0; i < this.InputOptions.Count; i++)
-                    if (this.InputOptions[i].Text == option.ToString())
+                    if (this.InputOptions[i].ShortGUID == option)
                         return this.InputOptions[i];
 
             var newOp = this.InputOptions.Add(option, typeof(void), false);
@@ -640,7 +630,7 @@ namespace ST.Library.UI.NodeEditor
         {
             if (!unique)
                 for (int i = 0; i < this.OutputOptions.Count; i++)
-                    if (this.OutputOptions[i].Text == option.ToString())
+                    if (this.OutputOptions[i].ShortGUID == option)
                         return this.OutputOptions[i];
 
             var newOp = this.OutputOptions.Add(option, typeof(void), false);
@@ -652,7 +642,7 @@ namespace ST.Library.UI.NodeEditor
         {
             if (!unique)
                 for (int i = 0; i < this.TopOptions.Count; i++)
-                    if (this.TopOptions[i].Text == option.ToString())
+                    if (this.TopOptions[i].ShortGUID == option)
                         return this.TopOptions[i];
 
             var newOp = this.TopOptions.Add(option, typeof(void), false);
@@ -664,12 +654,29 @@ namespace ST.Library.UI.NodeEditor
         {
             if (!unique)
                 for (int i = 0; i < this.BottomOptions.Count; i++)
-                    if (this.BottomOptions[i].Text == option.ToString())
+                    if (this.BottomOptions[i].ShortGUID == option)
                         return this.BottomOptions[i];
 
             var newOp = this.BottomOptions.Add(option, typeof(void), false);
             newOp.Style = PinStyle.ArrowDown;
             return newOp;
+        }
+
+        public STNodeOption GetOption(ShortGuid option)
+        {
+            for (int i = 0; i < this.InputOptions.Count; i++)
+                if (this.InputOptions[i].ShortGUID == option)
+                    return this.InputOptions[i];
+            for (int i = 0; i < this.OutputOptions.Count; i++)
+                if (this.OutputOptions[i].ShortGUID == option)
+                    return this.OutputOptions[i];
+            for (int i = 0; i < this.TopOptions.Count; i++)
+                if (this.TopOptions[i].ShortGUID == option)
+                    return this.TopOptions[i];
+            for (int i = 0; i < this.BottomOptions.Count; i++)
+                if (this.BottomOptions[i].ShortGUID == option)
+                    return this.BottomOptions[i];
+            return null;
         }
 
         public void RemoveInputOption(ShortGuid option)
