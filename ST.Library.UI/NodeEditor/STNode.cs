@@ -1441,52 +1441,93 @@ namespace ST.Library.UI.NodeEditor
 
             int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
             int body_start_y = this._Top + top_space + this._TitleHeight;
-            
-            int nIndex = 0;
-            
-            Rectangle rect_in = new Rectangle(this.Left, body_start_y, this._Width, this._ItemHeight);
-            foreach (STNodeOption op in this._InputOptions) {
-                if (op != STNodeOption.Empty) {
+
+            if (RenderingOptions)
+            {
+                int nIndex = 0;
+                Rectangle rect_in = new Rectangle(this.Left, body_start_y, this._Width, this._ItemHeight);
+                foreach (STNodeOption op in this._InputOptions) {
+                    if (op != STNodeOption.Empty) {
+                        int x = this.Left - op.DotSize / 2;
+                        if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
+                            x = this.Left - op.DotSize;
+                        }
+                        Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect_in.Y + (rect_in.Height - op.DotSize) / 2), nIndex);
+                        
+                        Rectangle textRect = new Rectangle(this.Left + 10, rect_in.Y, this._Width - 20, this._ItemHeight);
+                        if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
+                             textRect.X = this.Left + 4;
+                        }
+
+                        op.TextRectangle = this.OnSetOptionTextRectangle(op, textRect, nIndex);
+                        op.DotLeft = pt.X;
+                        op.DotTop = pt.Y;
+                    }
+                    rect_in.Y += this._ItemHeight;
+                    nIndex++;
+                }
+                
+                Rectangle rect_out = new Rectangle(this.Left, body_start_y, this._Width, this._ItemHeight);
+                nIndex = 0;
+                foreach (STNodeOption op in this._OutputOptions) {
+                    if (op != STNodeOption.Empty) {
+                        int x = this.Right - op.DotSize / 2;
+                        if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
+                            x = this.Right;
+                        }
+                        Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect_out.Y + (rect_out.Height - op.DotSize) / 2), nIndex);
+                        
+                        Rectangle textRect = new Rectangle(this.Left + 10, rect_out.Y, this._Width - 20, this._ItemHeight);
+                        if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
+                             textRect.Width = this._Width - 14;
+                        }
+
+                        op.TextRectangle = this.OnSetOptionTextRectangle(op, textRect, nIndex);
+                        op.DotLeft = pt.X;
+                        op.DotTop = pt.Y;
+                    }
+                    rect_out.Y += this._ItemHeight;
+                    nIndex++;
+                }
+            }
+            else
+            {
+                // When not rendering options, pins should be vertically centered on the title bar.
+                int nCenterY = this.TitleRectangle.Y + this.TitleRectangle.Height / 2;
+                int nIndex = 0;
+
+                foreach (STNodeOption op in this._InputOptions) {
+                    if (op == STNodeOption.Empty) continue;
+                    
                     int x = this.Left - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
                         x = this.Left - op.DotSize;
                     }
-                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect_in.Y + (rect_in.Height - op.DotSize) / 2), nIndex);
-                    
-                    Rectangle textRect = new Rectangle(this.Left + 10, rect_in.Y, this._Width - 20, this._ItemHeight);
-                    if (op.Style == PinStyle.ArrowLeft || op.Style == PinStyle.ArrowRight) {
-                         textRect.X = this.Left + 4;
-                    }
 
-                    op.TextRectangle = this.OnSetOptionTextRectangle(op, textRect, nIndex);
+                    // Center the dot on the Y axis of the title bar
+                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, nCenterY - op.DotSize / 2), nIndex);
                     op.DotLeft = pt.X;
                     op.DotTop = pt.Y;
+                    op.TextRectangle = Rectangle.Empty; // No text is rendered
+                    nIndex++;
                 }
-                rect_in.Y += this._ItemHeight;
-                nIndex++;
-            }
-            
-            Rectangle rect_out = new Rectangle(this.Left, body_start_y, this._Width, this._ItemHeight);
-            nIndex = 0;
-            foreach (STNodeOption op in this._OutputOptions) {
-                if (op != STNodeOption.Empty) {
+
+                nIndex = 0;
+                foreach (STNodeOption op in this._OutputOptions) {
+                    if (op == STNodeOption.Empty) continue;
+                    
                     int x = this.Right - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
                         x = this.Right;
                     }
-                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, rect_out.Y + (rect_out.Height - op.DotSize) / 2), nIndex);
-                    
-                    Rectangle textRect = new Rectangle(this.Left + 10, rect_out.Y, this._Width - 20, this._ItemHeight);
-                    if (op.Style == PinStyle.ArrowRight || op.Style == PinStyle.ArrowLeft) {
-                         textRect.Width = this._Width - 14;
-                    }
 
-                    op.TextRectangle = this.OnSetOptionTextRectangle(op, textRect, nIndex);
+                    // Center the dot on the Y axis of the title bar
+                    Point pt = this.OnSetOptionDotLocation(op, new Point(x, nCenterY - op.DotSize / 2), nIndex);
                     op.DotLeft = pt.X;
                     op.DotTop = pt.Y;
+                    op.TextRectangle = Rectangle.Empty; // No text is rendered
+                    nIndex++;
                 }
-                rect_out.Y += this._ItemHeight;
-                nIndex++;
             }
             
             const int H_PADDING = 15;
