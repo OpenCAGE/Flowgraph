@@ -638,7 +638,7 @@ namespace ST.Library.UI.NodeEditor
             return newOp;
         }
 
-        public STNodeOption AddTopOption(ShortGuid option, PinStyle style = PinStyle.ArrowUp, bool unique = false)
+        public STNodeOption AddTopOption(ShortGuid option, PinStyle style = PinStyle.ArrowDown, bool unique = false)
         {
             if (!unique)
                 for (int i = 0; i < this.TopOptions.Count; i++)
