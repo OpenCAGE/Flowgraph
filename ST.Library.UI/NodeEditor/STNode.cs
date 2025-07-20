@@ -806,7 +806,7 @@ namespace ST.Library.UI.NodeEditor
             int bottom_space = (RenderingOptions && this.BottomOptions.Count > 0) ? this._ItemHeight : 0;
 
             // Draw the middle body background
-            if (this._BackColor.A != 0) {
+            if (this._BackColor.A != 0 && RenderingOptions) {
                 dt.SolidBrush.Color = this._BackColor;
                 Rectangle bodyRect = new Rectangle(this.Left, this.Top + top_space, this.Width, this.Height - top_space - bottom_space);
                 if (this.Owner.RoundedCornerRadius == -1 || this.BottomOptionsCount != 0)
@@ -860,7 +860,7 @@ namespace ST.Library.UI.NodeEditor
             // Draw the title bar background
             if (this._TitleColor.A != 0) {
                 brush.Color = this._TitleColor;
-                if (this.Owner.RoundedCornerRadius == -1 || this.TopOptionsCount != 0)
+                if (this.Owner.RoundedCornerRadius == -1 || (this.TopOptionsCount != 0 && RenderingOptions))
                 {
                     g.FillRectangle(brush, this.TitleRectangle);
                 }
