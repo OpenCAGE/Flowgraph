@@ -390,7 +390,13 @@ namespace ST.Library.UI.NodeEditor
         private ConnectionStatus CanConnectInternal(STNodeOption op)
         {
             if (this == STNodeOption.Empty || op == STNodeOption.Empty) return ConnectionStatus.EmptyOption;
-            if (this.Location == op.Location) return ConnectionStatus.SameInputOrOutput; //todo: sanity logic here
+            if (this.Location == op.Location) return ConnectionStatus.SameInputOrOutput;
+
+            if (this.Location == PinLocation.Left && op.Location != PinLocation.Right) return ConnectionStatus.InvalidLogicFlow;
+            if (this.Location == PinLocation.Right && op.Location != PinLocation.Left) return ConnectionStatus.InvalidLogicFlow;
+            if (this.Location == PinLocation.Top && op.Location != PinLocation.Bottom) return ConnectionStatus.InvalidLogicFlow; //some can seemingly go top-top?
+            if (this.Location == PinLocation.Bottom && op.Location != PinLocation.Top) return ConnectionStatus.InvalidLogicFlow;
+
             if (op.Owner == null || this._Owner == null) return ConnectionStatus.NoOwner;
             if (!this.Owner.Owner.AllowSameOwnerConnections && op.Owner == this._Owner) return ConnectionStatus.SameOwner;
             if (this._Owner.LockOption || op._Owner.LockOption) return ConnectionStatus.Locked;

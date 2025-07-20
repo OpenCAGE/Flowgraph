@@ -961,13 +961,10 @@ namespace ST.Library.UI.NodeEditor
                 case CanvasAction.ConnectOption:    //If it is connecting, end the connection
                     if (e.Location == m_pt_down_in_control) break;
                     if (nfi.NodeOption != null) {
-                        if (CanOptionsConnect(m_option_down, nfi.NodeOption))
-                        {
-                            if (m_option_down.Location == PinLocation.Left)
-                                nfi.NodeOption.ConnectOption(m_option_down);
-                            else
-                                m_option_down.ConnectOption(nfi.NodeOption);
-                        }
+                        if (m_option_down.Location == PinLocation.Left)
+                            nfi.NodeOption.ConnectOption(m_option_down);
+                        else
+                            m_option_down.ConnectOption(nfi.NodeOption);
                     }
                     break;
             }
@@ -1791,27 +1788,6 @@ namespace ST.Library.UI.NodeEditor
                 new Rectangle(img.Width - 5, 5, 5, img.Height - 10), GraphicsUnit.Pixel);
             g.DrawImage(img, new Rectangle(rect.X, rect.Bottom, rect.Width, 5),
                 new Rectangle(5, img.Height - 5, img.Width - 10, 5), GraphicsUnit.Pixel);
-        }
-
-        private bool CanOptionsConnect(STNodeOption start, STNodeOption end)
-        {
-            if (start == null || end == null) return false;
-            if (start.Owner == null || end.Owner == null) return false;
-
-            bool isStartLeft = start.Owner.InputOptions.Contains(start);
-            bool isStartRight = start.Owner.OutputOptions.Contains(start);
-            bool isStartTop = start.Owner.TopOptions.Contains(start);
-            bool isStartBottom = start.Owner.BottomOptions.Contains(start);
-
-            bool isEndLeft = end.Owner.InputOptions.Contains(end);
-            bool isEndRight = end.Owner.OutputOptions.Contains(end);
-            bool isEndTop = end.Owner.TopOptions.Contains(end);
-            bool isEndBottom = end.Owner.BottomOptions.Contains(end);
-
-            if ((isStartLeft && isEndRight) || (isStartRight && isEndLeft)) return true;
-            if ((isStartTop && isEndBottom) || (isStartBottom && isEndTop)) return true;
-
-            return false;
         }
 
         #endregion private

@@ -170,7 +170,13 @@ namespace ST.Library.UI.NodeEditor
             {
                 if (op == STNodeOption.Empty) return ConnectionStatus.EmptyOption;
                 if (this.DataType != typeof(object)) return base.CanConnect(op);
-                if (this.Location == op.Location) return ConnectionStatus.SameInputOrOutput; //todo: more sanity here?
+                if (this.Location == op.Location) return ConnectionStatus.SameInputOrOutput;
+
+                if (this.Location == PinLocation.Left && op.Location != PinLocation.Right) return ConnectionStatus.InvalidLogicFlow;
+                if (this.Location == PinLocation.Right && op.Location != PinLocation.Left) return ConnectionStatus.InvalidLogicFlow;
+                if (this.Location == PinLocation.Top && op.Location != PinLocation.Bottom) return ConnectionStatus.InvalidLogicFlow; //some can seemingly go top-top?
+                if (this.Location == PinLocation.Bottom && op.Location != PinLocation.Top) return ConnectionStatus.InvalidLogicFlow;
+
                 if (op.Owner == null || this.Owner == null) return ConnectionStatus.NoOwner;
                 if (!this.Owner.Owner.AllowSameOwnerConnections && op.Owner == this.Owner) return ConnectionStatus.SameOwner;
                 if (this.Owner.LockOption || op.Owner.LockOption) return ConnectionStatus.Locked;

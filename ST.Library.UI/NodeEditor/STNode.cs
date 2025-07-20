@@ -603,10 +603,11 @@ namespace ST.Library.UI.NodeEditor
             TitleHeight = height;
         }
 
-        public void SetColour(Color colourBG, Color colourFG)
+        public void SetColour(Color colourTitleBar, Color colourTopBottomPins, Color colourText)
         {
-            TitleColor = colourBG;
-            ForeColor = colourFG;
+            TitleColor = colourTitleBar;
+            PinAreaColor = colourTopBottomPins;
+            ForeColor = colourText;
         }
 
         public void SetPosition(Point location)
@@ -816,8 +817,6 @@ namespace ST.Library.UI.NodeEditor
                 if (this.Owner.RoundedCornerRadius == -1) {
                     dt.Graphics.FillRectangle(dt.SolidBrush, topRect);
                 } else {
-                    // This assumes a RoundedCornerUtils class exists as implied by original code.
-                    // It will draw a rectangle with only the top corners rounded.
                     RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, topRect, Owner.RoundedCornerRadius, false);
                 }
             }
@@ -829,7 +828,6 @@ namespace ST.Library.UI.NodeEditor
                 if (this.Owner.RoundedCornerRadius == -1) {
                     dt.Graphics.FillRectangle(dt.SolidBrush, bottomRect);
                 } else {
-                    // This will draw a rectangle with only the bottom corners rounded.
                     RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bottomRect, Owner.RoundedCornerRadius);
                 }
             }

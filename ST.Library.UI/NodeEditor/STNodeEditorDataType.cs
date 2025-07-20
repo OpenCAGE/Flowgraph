@@ -25,6 +25,11 @@ namespace ST.Library.UI.NodeEditor
         [Description("Both are input or output options")]
         SameInputOrOutput,
         /// <summary>
+        /// The logic flow doesn't make sense here
+        /// </summary>
+        [Description("The logic flow doesn't make sense here")]
+        InvalidLogicFlow,
+        /// <summary>
         /// Different data types
         /// </summary>
         [Description("Different data types")]
