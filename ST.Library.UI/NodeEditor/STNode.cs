@@ -430,6 +430,12 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        /// <summary>
+        /// Gets or sets a fixed width for the node.
+        /// When set, the node will not auto-size its width based on content.
+        /// </summary>
+        public int? FixedWidth { get; set; }
+
         private STNodeControlCollection _Controls;
         /// <summary>
         /// Get the collection of controls contained in Node.
@@ -572,6 +578,8 @@ namespace ST.Library.UI.NodeEditor
             this._MarkColor = Color.FromArgb(200, Color.Brown);
             this.PinAreaColor = Color.FromArgb(200, 80, 80, 80);
             this._Font = new Font("courier new", 8.25f);
+
+            FixedWidth = 150;
 
             m_sf = new StringFormat();
             m_sf.Alignment = StringAlignment.Near;
@@ -859,7 +867,7 @@ namespace ST.Library.UI.NodeEditor
         protected virtual void OnDrawTitle(DrawingTools dt) {
             Rectangle titleRect = this.TitleRectangle;
 
-            m_sf.Alignment = StringAlignment.Center;
+            m_sf.Alignment = StringAlignment.Near; // Left-align title text
             m_sf.LineAlignment = StringAlignment.Center;
             Graphics g = dt.Graphics;
             SolidBrush brush = dt.SolidBrush;
@@ -894,6 +902,29 @@ namespace ST.Library.UI.NodeEditor
                 g.FillRectangle(brush, this.Right - 8, n + 6, 2, 4);
             }
 
+            // Create a padded rectangle for the text to achieve left padding and clipping.
+            Rectangle textRect = titleRect;
+            textRect.X += 10; // 10 pixels of left padding
+            textRect.Width -= 15; // Reduce width to account for padding
+
+            // Font scaling logic based on zoom
+            Font fontToUse = this._FontBold;
+            Font subFontToUse = this._Font;
+            bool fontCreated = false;
+            
+            float zoom = dt.Graphics.Transform.Elements[0];
+            if (this.Owner != null && zoom > 1.0f) {
+                // When zoomed in, reduce font size to show more text.
+                float newSize = this._FontBold.Size / zoom;
+                fontToUse = new Font(this._FontBold.FontFamily, newSize, this._FontBold.Style);
+                subFontToUse = new Font(this._Font.FontFamily, newSize, this._Font.Style);
+                fontCreated = true;
+            }
+            
+            // Set clipping region to avoid text overflowing the title bar
+            Region oldClip = g.Clip;
+            g.SetClip(textRect, CombineMode.Intersect);
+
             // Draw Title and Subtitle text
             if (!string.IsNullOrEmpty(this._Title) && this._ForeColor.A != 0) {
                 brush.Color = this._ForeColor;
@@ -903,7 +934,7 @@ namespace ST.Library.UI.NodeEditor
                 if (!string.IsNullOrEmpty(this._SubTitle))
                     title += "\n ";
 
-                g.DrawString(title, this._FontBold, brush, titleRect, m_sf);
+                g.DrawString(title, fontToUse, brush, textRect, m_sf);
             }
             if (!string.IsNullOrEmpty(this._SubTitle) && this._ForeColor.A != 0)
             {
@@ -914,8 +945,18 @@ namespace ST.Library.UI.NodeEditor
                 if (!string.IsNullOrEmpty(this._Title))
                     subTitle = " \n" + subTitle;
 
-                g.DrawString(subTitle, this._Font, brush, titleRect, m_sf);
+                g.DrawString(subTitle, subFontToUse, brush, textRect, m_sf);
             }
+
+            // Restore original clipping region and dispose temporary fonts
+            g.SetClip(oldClip, CombineMode.Replace);
+            if (fontCreated) {
+                fontToUse.Dispose();
+                subFontToUse.Dispose();
+            }
+            
+            // Restore StringFormat for other drawing operations that might expect it to be centered.
+            m_sf.Alignment = StringAlignment.Center;
         }
         protected virtual void OnDrawBody(DrawingTools dt) {
             int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
@@ -1191,6 +1232,10 @@ namespace ST.Library.UI.NodeEditor
             // Final width is the maximum of all calculated widths
             int nWidth = (int)Math.Max(Math.Max(topPinsWidth, bottomPinsWidth), verticalPinTextWidth);
             if (titleWidth > nWidth) nWidth = titleWidth;
+            
+            if (this.FixedWidth.HasValue) {
+                nWidth = this.FixedWidth.Value;
+            }
             
             return new Size(nWidth < 50 ? 50 : nWidth, nHeight);
         }
