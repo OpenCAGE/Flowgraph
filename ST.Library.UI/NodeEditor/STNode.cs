@@ -430,11 +430,12 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
-        /// <summary>
-        /// Gets or sets a fixed width for the node.
-        /// When set, the node will not auto-size its width based on content.
-        /// </summary>
-        public int? FixedWidth { get; set; }
+        private int _minWidth = 150;
+        public int MinWidth
+        {
+            get { return _minWidth; }
+            set { _minWidth = value; }
+        }
 
         private STNodeControlCollection _Controls;
         /// <summary>
@@ -579,7 +580,7 @@ namespace ST.Library.UI.NodeEditor
             this.PinAreaColor = Color.FromArgb(200, 80, 80, 80);
             this._Font = new Font("courier new", 8.25f);
 
-            FixedWidth = 150;
+            MinWidth = 150;
 
             m_sf = new StringFormat();
             m_sf.Alignment = StringAlignment.Near;
@@ -824,13 +825,18 @@ namespace ST.Library.UI.NodeEditor
             if (this._BackColor.A != 0 && RenderingOptions) {
                 dt.SolidBrush.Color = this._BackColor;
                 Rectangle bodyRect = new Rectangle(this.Left, this.Top + top_space, this.Width, this.Height - top_space - bottom_space);
-                if (this.Owner.RoundedCornerRadius == -1 || this.BottomOptionsCount != 0)
+                if (this.Owner.RoundedCornerRadius == -1)
                 {
                     dt.Graphics.FillRectangle(dt.SolidBrush, bodyRect);
                 }
                 else
                 {
-                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius);
+                    if (BottomOptionsCount == 0 && TopOptionsCount == 0)
+                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius, true);
+                    else if (BottomOptionsCount == 0)
+                        RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius);
+                    else
+                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius);
                 }
             }
 
@@ -1219,22 +1225,22 @@ namespace ST.Library.UI.NodeEditor
             int verticalPinTextWidth = (int)(szf_input.Width + szf_output.Width + 25);
             
             // Get width from title
-            int titleWidth = 0;
-            if (!string.IsNullOrEmpty(this.Title)) {
-                 titleWidth = (int)g.MeasureString(this.Title, this._FontBold).Width;
-            }
-            if (!string.IsNullOrEmpty(this._SubTitle)) {
-                int subtitleWidth = (int)g.MeasureString(this._SubTitle, this.Font).Width;
-                if (subtitleWidth > titleWidth) titleWidth = subtitleWidth;
-            }
-            titleWidth += 40; // Padding for title
+            //int titleWidth = 0;
+            //if (!string.IsNullOrEmpty(this.Title)) {
+            //     titleWidth = (int)g.MeasureString(this.Title, this._FontBold).Width;
+            //}
+            //if (!string.IsNullOrEmpty(this._SubTitle)) {
+            //    int subtitleWidth = (int)g.MeasureString(this._SubTitle, this.Font).Width;
+            //    if (subtitleWidth > titleWidth) titleWidth = subtitleWidth;
+            //}
+            //titleWidth += 40; // Padding for title
             
             // Final width is the maximum of all calculated widths
             int nWidth = (int)Math.Max(Math.Max(topPinsWidth, bottomPinsWidth), verticalPinTextWidth);
-            if (titleWidth > nWidth) nWidth = titleWidth;
+            //if (titleWidth > nWidth) nWidth = titleWidth;
             
-            if (this.FixedWidth.HasValue) {
-                nWidth = this.FixedWidth.Value;
+            if (this.MinWidth > nWidth) {
+                nWidth = this.MinWidth;
             }
             
             return new Size(nWidth < 50 ? 50 : nWidth, nHeight);
