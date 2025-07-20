@@ -806,9 +806,18 @@ namespace ST.Library.UI.NodeEditor
             int bottom_space = (RenderingOptions && this.BottomOptions.Count > 0) ? this._ItemHeight : 0;
 
             // Draw the middle body background
-            dt.SolidBrush.Color = this._BackColor;
-            Rectangle bodyRect = new Rectangle(this.Left, this.Top + top_space, this.Width, this.Height - top_space - bottom_space);
-            dt.Graphics.FillRectangle(dt.SolidBrush, bodyRect);
+            if (this._BackColor.A != 0) {
+                dt.SolidBrush.Color = this._BackColor;
+                Rectangle bodyRect = new Rectangle(this.Left, this.Top + top_space, this.Width, this.Height - top_space - bottom_space);
+                if (this.Owner.RoundedCornerRadius == -1 || this.BottomOptionsCount != 0)
+                {
+                    dt.Graphics.FillRectangle(dt.SolidBrush, bodyRect);
+                }
+                else
+                {
+                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius);
+                }
+            }
 
             // Draw top pin area background
             if (top_space > 0) {
@@ -851,8 +860,14 @@ namespace ST.Library.UI.NodeEditor
             // Draw the title bar background
             if (this._TitleColor.A != 0) {
                 brush.Color = this._TitleColor;
-                // Since the main background is already drawn, we just fill a simple rectangle.
-                g.FillRectangle(brush, titleRect);
+                if (this.Owner.RoundedCornerRadius == -1 || this.TopOptionsCount != 0)
+                {
+                    g.FillRectangle(brush, this.TitleRectangle);
+                }
+                else
+                {
+                    RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, InputOptionsCount + OutputOptionsCount + TopOptionsCount + BottomOptionsCount == 0 || !RenderingOptions);
+                }
             }
 
             // Draw lock icons, adjusted to the new titleRect position
