@@ -123,6 +123,8 @@ namespace ST.Library.UI.NodeEditor
             get { return _CanvasScale; }
         }
 
+        public PointF CanvasCenter => ControlToCanvas(new PointF(this.Width / 2f, this.Height / 2f));
+
         private float _Curvature = 0.3F;
         /// <summary>
         /// Get or set the curvature of the lines between Options.
@@ -1000,7 +1002,7 @@ namespace ST.Library.UI.NodeEditor
 
             if (zoomInput) {
                 float f = this._CanvasScale + (e.Delta < 0 ? -0.1f : 0.1f);
-                this.ScaleCanvas(f, this.Width / 2, this.Height / 2);
+                this.ScaleCanvas(f, e.X, e.Y);
             } /*else {
                 if (!m_mouse_in_control) return;
                 var nfi = this.FindNodeFromPoint(m_pt_in_canvas);
@@ -1016,7 +1018,7 @@ namespace ST.Library.UI.NodeEditor
                 else if (t <= 150) t = 10;
                 else if (t <= 300) t = 4;
                 else t = 2;
-                this.MoveCanvas(this._CanvasOffsetX, m_real_canvas_y + (e.Delta < 0 ? -t : t), true, CanvasMoveArgs.Top);//process mouse mid
+                this.MoveCanvas(this._CanvasOffsetX, m_real_canvas_y + (e.Delta < 0 ? -t : t), true);
                 m_dt_vw = DateTime.Now;
             }*/
         }
@@ -1036,7 +1038,7 @@ namespace ST.Library.UI.NodeEditor
             else if (t <= 150) t = 10;
             else if (t <= 300) t = 4;
             else t = 2;
-            this.MoveCanvas(m_real_canvas_x + (e.Delta > 0 ? -t : t), this._CanvasOffsetY, true, CanvasMoveArgs.Left);
+            this.MoveCanvas(m_real_canvas_x + (e.Delta > 0 ? -t : t), this._CanvasOffsetY, true);
             m_dt_hw = DateTime.Now;
         }
         //===========================for node other event==================================
@@ -1122,7 +1124,7 @@ namespace ST.Library.UI.NodeEditor
             Graphics g = dt.Graphics;
             using (Pen p_2 = new Pen(Color.FromArgb(65, this._GridColor))) {
                 using (Pen p_1 = new Pen(Color.FromArgb(30, this._GridColor))) {
-                    float nIncrement = (20 * this._CanvasScale);             //The interval between the grids is drawn according to the scale
+                    float nIncrement = (20 * this._CanvasScale);                      //The interval between the grids is drawn according to the scale
                     int n = 5 - (int)(this._CanvasOffsetX / nIncrement);
                     for (float f = this._CanvasOffsetX % nIncrement; f < nWidth; f += nIncrement)
                         g.DrawLine((n++ % 5 == 0 ? p_2 : p_1), f, 0, f, nHeight);
@@ -1967,33 +1969,18 @@ namespace ST.Library.UI.NodeEditor
         }
         /// <summary>
         /// Move the coordinates of the origin of the canvas to the specified coordinate position of the control.
-        /// Cannot move when Node does not exist.
         /// </summary>
         /// <param name="x">X coordinate</param>
         /// <param name="y">Y coordinate</param>
         /// <param name="bAnimation">Whether to start the animation effect during the movement</param>
-        /// <param name="ma">Specify the coordinate parameters that need to be modified</param>
-        public void MoveCanvas(float x, float y, bool bAnimation, CanvasMoveArgs ma) {
-            if (this._Nodes.Count == 0) {
-                m_real_canvas_x = m_real_canvas_y = 10;
-                return;
-            }
-            int l = (int)((this._CanvasValidBounds.Left + 50) * this._CanvasScale);
-            int t = (int)((this._CanvasValidBounds.Top + 50) * this._CanvasScale);
-            int r = (int)((this._CanvasValidBounds.Right - 50) * this._CanvasScale);
-            int b = (int)((this._CanvasValidBounds.Bottom - 50) * this._CanvasScale);
-            if (r + x < 0) x = -r;
-            if (this.Width - l < x) x = this.Width - l;
-            if (b + y < 0) y = -b;
-            if (this.Height - t < y) y = this.Height - t;
+        public void MoveCanvas(float x, float y, bool bAnimation) {
             if (bAnimation) {
-                if ((ma & CanvasMoveArgs.Left) == CanvasMoveArgs.Left)
-                    m_real_canvas_x = x;
-                if ((ma & CanvasMoveArgs.Top) == CanvasMoveArgs.Top)
-                    m_real_canvas_y = y;
+                m_real_canvas_x = x;
+                m_real_canvas_y = y;
             } else {
                 m_real_canvas_x = this._CanvasOffsetX = x;
                 m_real_canvas_y = this._CanvasOffsetY = y;
+                this.Invalidate(); // Redraw immediately if not animating
             }
             this.OnCanvasMoved(EventArgs.Empty);
         }
@@ -2022,6 +2009,17 @@ namespace ST.Library.UI.NodeEditor
             this._CanvasOffsetY = m_real_canvas_y -= this.CanvasToControl(y_c, false) - y;
             this.OnCanvasZoomed(EventArgs.Empty);
             this.Invalidate();
+        }
+
+        /// <summary>
+        /// Moves the canvas so that the given point in canvas coordinates is in the center of the view.
+        /// </summary>
+        /// <param name="canvasPoint">The point in canvas coordinates to center on.</param>
+        /// <param name="bAnimation">Whether to animate the transition.</param>
+        public void CenterCanvasOn(float x, float y, bool bAnimation) {
+            float newX = (this.Width / 2f) - (x * this._CanvasScale);
+            float newY = (this.Height / 2f) - (y * this._CanvasScale);
+            this.MoveCanvas(newX, newY, bAnimation);
         }
 
         // Commented out GetConnectionInfo() below since it seems to be lazily populated and
@@ -2243,7 +2241,7 @@ namespace ST.Library.UI.NodeEditor
                     dic[op_out].ConnectOption(dic[op_in]);
                 }
                 this.ScaleCanvas(scale, 0, 0);
-                this.MoveCanvas(x, y, false, CanvasMoveArgs.All);
+                this.MoveCanvas(x, y, false);
             }
             this.BuildBounds();
             foreach (STNode node in this._Nodes) node.OnEditorLoadCompleted();

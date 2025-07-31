@@ -79,7 +79,7 @@ namespace ST.Library.UI.NodeEditor
             m_owner.SetActiveNode(null);
             m_owner.BuildBounds();
             m_owner.ScaleCanvas(1, 0, 0);       //When there are no nodes, the coordinate system returns.
-            m_owner.MoveCanvas(10, 10, true, CanvasMoveArgs.All);
+            m_owner.MoveCanvas(10, 10, true);
             m_owner.Invalidate();               //If the canvas position and zoom are in the initial state, the above two lines of code will not cause the control to redraw.
         }
 
@@ -145,7 +145,7 @@ namespace ST.Library.UI.NodeEditor
 
             if (this._Count == 0) {             // When there are no nodes, the coordinate system returns.
                 m_owner.ScaleCanvas(1, 0, 0);
-                m_owner.MoveCanvas(10, 10, true, CanvasMoveArgs.All);
+                m_owner.MoveCanvas(10, 10, true);
             } else {
                 m_owner.Invalidate();
                 m_owner.BuildBounds();
