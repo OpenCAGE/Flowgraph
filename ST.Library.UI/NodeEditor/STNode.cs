@@ -9,6 +9,7 @@ using System.Collections;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 /*
 MIT License
 
@@ -415,20 +416,43 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public int BottomOptionsCount { get { return _BottomOptions.Count; } }
 
-        private int _maxPinWidth = 65;
-        /// <summary>
-        /// Gets or sets the maximum width for an individual top or bottom pin's text area.
-        /// When the editor is zoomed, the text will scale to fit and be clipped.
-        /// </summary>
-        public int MaxPinWidth {
-            get { return _maxPinWidth; }
-            set {
-                if (value < 10) value = 10; // Set a reasonable minimum
-                if (_maxPinWidth == value) return;
-                _maxPinWidth = value;
-                this.BuildSize(true, true, true);
+        private int MaxPinWidthTop 
+        {
+            get 
+            {
+                if (TopOptionsCount <= 1)
+                    return MinWidth;
+                int width = (MinWidth / TopOptionsCount) - (PinHorizontalPaddingTop * (TopOptionsCount - 1));
+                if (width < 45)
+                {
+                    if (TopOptionsCount < 7)
+                        width = 55;
+                    else
+                        width = 45;
+                }
+                return width;
             }
         }
+        private int MaxPinWidthBottom
+        {
+            get
+            {
+                if (BottomOptionsCount <= 1)
+                    return MinWidth;
+                int width = (MinWidth / BottomOptionsCount) - (PinHorizontalPaddingBottom * (BottomOptionsCount - 1));
+                if (width < 45)
+                {
+                    if (BottomOptionsCount < 7)
+                        width = 65;
+                    else
+                        width = 45;
+                }
+                return width;
+            }
+        }
+        private int PinHorizontalPaddingTop => TopOptionsCount > 7 ? 5 : 15;
+        private int PinHorizontalPaddingBottom => BottomOptionsCount > 7 ? 10 : 25;
+        private int PinVerticalPadding => 2;
 
         private int _minWidth = 150;
         public int MinWidth
@@ -881,13 +905,26 @@ namespace ST.Library.UI.NodeEditor
             // Draw the title bar background
             if (this._TitleColor.A != 0) {
                 brush.Color = this._TitleColor;
-                if (this.Owner.RoundedCornerRadius == -1 || (this.TopOptionsCount != 0 && RenderingOptions))
-                {
+                if (this.Owner.RoundedCornerRadius == -1) {
                     g.FillRectangle(brush, this.TitleRectangle);
-                }
-                else
-                {
-                    RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, InputOptionsCount + OutputOptionsCount + TopOptionsCount + BottomOptionsCount == 0 || !RenderingOptions);
+                } else {
+                    bool hasTopBar = (RenderingOptions && this.TopOptions.Count > 0);
+                    // Check for any content below the title bar (side pins, controls, or a bottom bar)
+                    bool hasBottomContent = (RenderingOptions && (this.BottomOptions.Count > 0 || this.InputOptions.Count > 0 || this.OutputOptions.Count > 0 || this.Controls.Count > 0));
+
+                    if (!hasTopBar && hasBottomContent) {
+                        // Case 1: Is the top-most element, but has content below. Round top corners only.
+                        RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, false);
+                    } else if (!hasTopBar && !hasBottomContent) {
+                        // Case 2: Is the only element (or the node is a variable type). Round all corners.
+                        RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, true);
+                    } else if (hasTopBar && !hasBottomContent) {
+                        // Case 3: Sits below a top bar and is the bottom-most element. Round bottom corners only.
+                        RoundedCornerUtils.FillRoundedRectangleBottom(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius);
+                    } else { // (hasTopBar && hasBottomContent)
+                        // Case 4: Sits between a top bar and content below. No rounding.
+                        g.FillRectangle(brush, this.TitleRectangle);
+                    }
                 }
             }
 
@@ -1132,33 +1169,34 @@ namespace ST.Library.UI.NodeEditor
             Font fontToUse = this.Font;
             bool fontCreated = false;
 
-            // For horizontal pins, dynamically adjust the font size so the text fits within the pin's capped width.
+            // Apply smooth scaling for horizontal (top/bottom) pins.
             if (isHorizontalPin) {
-                // Measure the full text width with the node's default font.
-                SizeF fullTextSize = g.MeasureString(op.Text, this.Font);
-                
-                // The visible width is defined by the pin's text rectangle.
-                float visibleWidth = textRect.Width;
-
-                // If the full text is wider than the allowed space, we need to create a new, smaller font.
-                if (fullTextSize.Width > visibleWidth && visibleWidth > 0) {
-                    // Calculate the ratio to scale the font size.
-                    float scaleRatio = visibleWidth / fullTextSize.Width;
-                    float newSize = this.Font.Size * scaleRatio;
-                    
-                    // Create the new font. We'll dispose of it after drawing.
+                float zoom = dt.Graphics.Transform.Elements[0];
+                // Always scale the font size by the inverse of the zoom.
+                // This keeps the text at a consistent size on the screen, creating a smooth effect.
+                if (zoom > 0) {
+                    float newSize = Math.Min(this.Font.Size / zoom, this.Font.Size);
                     fontToUse = new Font(this.Font.FontFamily, newSize, this.Font.Style);
                     fontCreated = true;
                 }
             }
 
+            // Use a clipping region to ensure text is clipped to its designated area.
+            Region oldClip = g.Clip;
+            g.SetClip(textRect, CombineMode.Intersect);
+
             brush.Color = op.TextColor;
+            g.SmoothingMode = SmoothingMode.HighQuality;
             g.DrawString(op.Text, fontToUse, brush, textRect, m_sf);
-            
+    
+            // Restore the original graphics state.
+            g.SetClip(oldClip, CombineMode.Replace);
+            g.SmoothingMode = SmoothingMode.None;
+    
             if (fontCreated) {
                 fontToUse.Dispose();
             }
-            
+    
             m_sf.LineAlignment = StringAlignment.Center;
         }
         protected virtual Point OnSetOptionDotLocation(STNodeOption op, Point pt, int nIndex) {
@@ -1175,34 +1213,34 @@ namespace ST.Library.UI.NodeEditor
                 foreach (STNodeOption op in this._OutputOptions) nOutputHeight += this._ItemHeight;
             }
 
-            int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
-
+            int top_space = RenderingOptions && this.TopOptions.Count > 0 ? this._ItemHeight : 0;
+            int bottom_space = RenderingOptions && this.BottomOptions.Count > 0 ? this._ItemHeight : 0;
             int titleSectionHeight = 20;
             if (!string.IsNullOrEmpty(this._SubTitle)) titleSectionHeight = 35;
-            this.TitleHeight = titleSectionHeight; // TitleHeight is now just for the title itself.
+            this.TitleHeight = titleSectionHeight;
 
-            int nHeight = top_space + this._TitleHeight + Math.Max(nInputHeight, nOutputHeight);
-            if (RenderingOptions && this.BottomOptions.Count > 0)
-            {
-                nHeight += this._ItemHeight;
-            }
-            
-            const int H_PADDING = 15;
+            int nHeight = top_space + this._TitleHeight + Math.Max(nInputHeight, nOutputHeight) + bottom_space;
+    
+            int H_PADDING = PinHorizontalPaddingTop;
+            int MAX_WIDTH = MaxPinWidthTop;
 
             float topPinsWidth = 0;
             if (RenderingOptions) {
                 foreach (STNodeOption op in this.TopOptions) {
                     float textWidth = g.MeasureString(op.Text, this.Font).Width;
-                    topPinsWidth += Math.Min(textWidth, this.MaxPinWidth) + H_PADDING;
+                    topPinsWidth += Math.Min(textWidth, MAX_WIDTH) + H_PADDING;
                 }
             }
             if (topPinsWidth > 0) topPinsWidth -= H_PADDING; // Remove last padding
-            
+
+            H_PADDING = PinHorizontalPaddingBottom;
+            MAX_WIDTH = MaxPinWidthBottom;
+
             float bottomPinsWidth = 0;
             if (RenderingOptions) {
                 foreach (STNodeOption op in this.BottomOptions) {
                     float textWidth = g.MeasureString(op.Text, this.Font).Width;
-                    bottomPinsWidth += Math.Min(textWidth, this.MaxPinWidth) + H_PADDING;
+                    bottomPinsWidth += Math.Min(textWidth, MAX_WIDTH) + H_PADDING;
                 }
             }
             if (bottomPinsWidth > 0) bottomPinsWidth -= H_PADDING; // Remove last padding
@@ -1354,6 +1392,38 @@ namespace ST.Library.UI.NodeEditor
                 m_ctrl_hover.OnMouseLeave(EventArgs.Empty);
                 m_ctrl_hover = null;
             }
+        }
+
+        /// <summary>
+        /// Determines if a point is within the draggable area of the node (i.e., not on a pin hotspot).
+        /// </summary>
+        /// <param name="p">The point to test, in Node coordinates.</param>
+        /// <returns>True if the point is in a draggable area, otherwise false.</returns>
+        public virtual bool IsPointInDragArea(Point p)
+        {
+            if (!this.Rectangle.Contains(p)) return false;
+
+            // Combine all pins into one list to check against.
+            var allOptions = this.InputOptions.Cast<STNodeOption>()
+                .Concat(this.OutputOptions.Cast<STNodeOption>())
+                .Concat(this.TopOptions.Cast<STNodeOption>())
+                .Concat(this.BottomOptions.Cast<STNodeOption>());
+
+            foreach (STNodeOption op in allOptions)
+            {
+                if (op == STNodeOption.Empty) continue;
+
+                // Define a "hotspot" around the pin dot and its text to prevent dragging.
+                Rectangle dotHotspot = op.DotRectangle;
+                dotHotspot.Inflate(4, 4); // Add a 4px buffer around the pin dot.
+
+                if (dotHotspot.Contains(p) || op.TextRectangle.Contains(p))
+                {
+                    return false; // Point is on a pin, not draggable.
+                }
+            }
+
+            return true; // Point is on the node body/title, draggable.
         }
 
         //[event]===========================[event]==============================[event]============================[event]
@@ -1580,13 +1650,14 @@ namespace ST.Library.UI.NodeEditor
                     nIndex++;
                 }
             }
-            
-            const int H_PADDING = 15;
-            const int V_PADDING = 2;
 
             using (var g = this.Owner.CreateGraphics())
             {
-                float totalTopWidth = this.TopOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
+                int V_PADDING = PinVerticalPadding;
+                int H_PADDING = PinHorizontalPaddingTop;
+                int MAX_WIDTH = MaxPinWidthTop;
+
+                float totalTopWidth = this.TopOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, MAX_WIDTH) + H_PADDING);
                 if (totalTopWidth > 0) totalTopWidth -= H_PADDING;
                 float currentX = this.Left + (this.Width - totalTopWidth) / 2f;
                 
@@ -1594,7 +1665,7 @@ namespace ST.Library.UI.NodeEditor
                 {
                     if (op == STNodeOption.Empty) continue;
                     float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
-                    float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
+                    float pinVisibleWidth = Math.Min(pinTextWidth, MAX_WIDTH);
                     
                     int y = this.Top + this._ItemHeight / 2 - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowUp || op.Style == PinStyle.ArrowDown) 
@@ -1606,8 +1677,11 @@ namespace ST.Library.UI.NodeEditor
                     op.TextRectangle = new Rectangle((int)currentX, this.Top + V_PADDING, (int)pinVisibleWidth, this._ItemHeight);
                     currentX += pinVisibleWidth + H_PADDING;
                 }
-                
-                float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, this.MaxPinWidth) + H_PADDING);
+
+                H_PADDING = PinHorizontalPaddingBottom;
+                MAX_WIDTH = MaxPinWidthBottom;
+
+                float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, MAX_WIDTH) + H_PADDING);
                 if (totalBottomWidth > 0) totalBottomWidth -= H_PADDING;
                 currentX = this.Left + (this.Width - totalBottomWidth) / 2f;
                 
@@ -1615,7 +1689,7 @@ namespace ST.Library.UI.NodeEditor
                 {
                     if (op == STNodeOption.Empty) continue;
                     float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
-                    float pinVisibleWidth = Math.Min(pinTextWidth, this.MaxPinWidth);
+                    float pinVisibleWidth = Math.Min(pinTextWidth, MAX_WIDTH);
 
                     int y = this.Bottom - op.DotSize / 2;
                     if (op.Style == PinStyle.ArrowDown || op.Style == PinStyle.ArrowUp) 
