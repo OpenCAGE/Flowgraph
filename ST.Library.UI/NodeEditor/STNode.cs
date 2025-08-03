@@ -75,12 +75,11 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public bool IsSelected {
             get { return _IsSelected; }
-            set {
+            internal set {
                 if (value == _IsSelected) return;
                 _IsSelected = value;
                 this.Invalidate();
-                this.OnSelectedChanged();
-                if (this._Owner != null) this._Owner.OnSelectedChanged(EventArgs.Empty);
+                // Removed OnSelectedChanged call - now controlled centrally by STNodeEditor
             }
         }
 
@@ -93,6 +92,7 @@ namespace ST.Library.UI.NodeEditor
             internal set {
                 if (value == _IsActive) return;
                 _IsActive = value;
+                this.Invalidate();
                 this.OnActiveChanged();
             }
         }
@@ -1712,8 +1712,26 @@ namespace ST.Library.UI.NodeEditor
                     this._Owner.RemoveSelectedNode(this);
             }
             if (bRedraw) this.Invalidate();
-            this.OnSelectedChanged();
-            if (this._Owner != null) this._Owner.OnSelectedChanged(EventArgs.Empty);
+            // Removed OnSelectedChanged call - now controlled centrally by STNodeEditor
+        }
+
+        /// <summary>
+        /// Sets the visual selection state without raising the SelectedChanged event.
+        /// This is used for multi-selection and dragging scenarios.
+        /// </summary>
+        /// <param name="bSelected">Whether the node should be visually selected</param>
+        /// <param name="bRedraw">Whether to redraw the node</param>
+        internal void SetVisualSelection(bool bSelected, bool bRedraw) {
+            if (this._IsSelected == bSelected) return;
+            this._IsSelected = bSelected;
+            if (this._Owner != null) {
+                if (bSelected)
+                    this._Owner.InternalAddSelectedNode(this);
+                else
+                    this._Owner.InternalRemoveSelectedNode(this);
+            }
+            if (bRedraw) this.Invalidate();
+            // Don't call OnSelectedChanged or raise events
         }
         public IAsyncResult BeginInvoke(Delegate method) { return this.BeginInvoke(method, null); }
         public IAsyncResult BeginInvoke(Delegate method, params object[] args) {

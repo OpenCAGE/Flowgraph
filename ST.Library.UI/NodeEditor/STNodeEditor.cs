@@ -531,6 +531,11 @@ namespace ST.Library.UI.NodeEditor
 
         private bool m_is_process_mouse_event = true;               //Whether to pass mouse-related events downwards (Node or NodeControls), such as disconnection-related operations should not be passed downwards
         private bool m_is_buildpath;                                //Used to determine whether to re-establish the cache connection path during the redrawing process
+        private bool m_has_dragged = false;                         //Whether the user has dragged the mouse since mouse down
+        private bool m_external_event_raising_enabled = true;       //External API control for SelectedChanged event raising
+        private bool m_internal_suppress_selected_changed = false;  //Internal logic to suppress events during drags and multi-selections
+        private Point m_mouse_down_location;                        //Mouse location when mouse down occurred
+        private Dictionary<STNode, Point> m_original_node_positions = new Dictionary<STNode, Point>(); //Original node positions at mouse down
         private Pen m_p_line = new Pen(Color.Cyan, 2f);             //Used to draw connected lines
         private Pen m_p_line_hover = new Pen(Color.Cyan, 4f);       //Used to draw the line when the mouse is hovering
         private GraphicsPath m_gp_hover;                            //The current connection path where the mouse is hovering
@@ -551,6 +556,8 @@ namespace ST.Library.UI.NodeEditor
         private Rectangle m_rect_alert;
         private AlertLocation m_al;
 
+        private HashSet<STNode> m_nodes_being_dragged = new HashSet<STNode>(); //Nodes currently being dragged
+
         #endregion
 
         #region event ----------------------------------------------------------------------------------------------------
@@ -564,6 +571,12 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         [Description("Occurs when the selected node changes.")]
         public event EventHandler SelectedChanged;
+        /// <summary>
+        /// Occurs when multiple nodes are selected (e.g., through rectangle selection or Ctrl+click).
+        /// This event is separate from SelectedChanged to allow for different handling of multi-selection.
+        /// </summary>
+        [Description("Occurs when multiple nodes are selected (e.g., through rectangle selection or Ctrl+click).")]
+        public event EventHandler MultiSelectionChanged;
         /// <summary>
         /// Occurs when the hovering node changes.
         /// </summary>
@@ -617,6 +630,9 @@ namespace ST.Library.UI.NodeEditor
 
         protected virtual internal void OnSelectedChanged(EventArgs e) {
             if (this.SelectedChanged != null) this.SelectedChanged(this, e);
+        }
+        protected virtual internal void OnMultiSelectionChanged(EventArgs e) {
+            if (this.MultiSelectionChanged != null) this.MultiSelectionChanged(this, e);
         }
         protected virtual void OnActiveChanged(EventArgs e) {
             if (this.ActiveChanged != null) this.ActiveChanged(this, e);
@@ -763,6 +779,16 @@ namespace ST.Library.UI.NodeEditor
 
         protected override void OnMouseDown(MouseEventArgs e) {
             base.OnMouseDown(e);
+            
+            // Initialize drag tracking flags
+            m_has_dragged = false;
+            m_internal_suppress_selected_changed = false;
+            m_original_node_positions.Clear();
+            m_nodes_being_dragged.Clear();
+            
+            // Store mouse down location for drag detection
+            m_mouse_down_location = e.Location;
+            
             this.Focus();
             m_ca = CanvasAction.None;
             m_mi.XMatched = m_mi.YMatched = false;
@@ -771,7 +797,7 @@ namespace ST.Library.UI.NodeEditor
             m_pt_down_in_canvas.Y = ((e.Y - this._CanvasOffsetY) / this._CanvasScale);
             m_pt_canvas_old.X = this._CanvasOffsetX;
             m_pt_canvas_old.Y = this._CanvasOffsetY;
-
+            
             if (m_gp_hover != null && e.Button == MouseButtons.Right) {     //Disconnect
                 if (RemoveLinkOnRightClick)
                 {
@@ -801,6 +827,7 @@ namespace ST.Library.UI.NodeEditor
                     bool bCtrlDown = (Control.ModifierKeys & Keys.Control) == Keys.Control;
                     if (bCtrlDown)
                     {
+                        // Ctrl+click for multi-selection - use visual selection
                         if (nfi.Node.IsSelected)
                         {
                             if (nfi.Node == this._ActiveNode)
@@ -810,16 +837,41 @@ namespace ST.Library.UI.NodeEditor
                         }
                         else
                         {
-                            nfi.Node.SetSelected(true, true);
+                            this.SetVisualSelection(nfi.Node, true);
                         }
+                        m_internal_suppress_selected_changed = true; // Don't raise SelectedChanged for multi-selection
+                        this.OnMultiSelectionChanged(EventArgs.Empty);
                         return;
                     }
-                    else if (!nfi.Node.IsSelected)
+                    else
                     {
-                        foreach (var n in m_hs_node_selected.ToArray()) n.SetSelected(false, false);
+                        // Single click - clear other selections and select this node
+                        if (!nfi.Node.IsSelected)
+                        {
+                            // Clear other selections - use visual selection to avoid events
+                            foreach (var n in m_hs_node_selected.ToArray()) 
+                                this.SetVisualSelection(n, false);
+                        }
+                        
+                                                    // Set the clicked node as selected
+                            if (m_external_event_raising_enabled && !m_internal_suppress_selected_changed) {
+                                nfi.Node.SetSelected(true, false);
+                            } else {
+                                this.SetVisualSelection(nfi.Node, true);
+                            }
+                            
+                            // Ensure the node is properly added to the selection set
+                            if (!m_hs_node_selected.Contains(nfi.Node)) {
+                                lock (m_hs_node_selected) {
+                                    m_hs_node_selected.Add(nfi.Node);
+                                }
+                            }
+                            
+                            this.SetActiveNode(nfi.Node);
+                            
+                            // Force a redraw to ensure the selection outline is immediately visible
+                            this.Invalidate();
                     }
-                    nfi.Node.SetSelected(true, false);                      //Add to selected node
-                    this.SetActiveNode(nfi.Node);
                     if (this.PointInRectangle(nfi.Node.Rectangle, m_pt_down_in_canvas.X, m_pt_down_in_canvas.Y))
                     {
                         if (e.Button == MouseButtons.Right)
@@ -832,10 +884,14 @@ namespace ST.Library.UI.NodeEditor
                         else
                         {
                             m_dic_pt_selected.Clear();
+                            m_original_node_positions.Clear();
                             lock (m_hs_node_selected)
                             {
                                 foreach (STNode n in m_hs_node_selected)    //Record the position of the selected node. It will be useful if you need to move the selected node.
+                                {
                                     m_dic_pt_selected.Add(n, n.Location);
+                                    m_original_node_positions.Add(n, n.Location);
+                                }
                             }
                             m_ca = CanvasAction.MoveNode;                  
                             if (this._ShowMagnet && this._ActiveNode != null) this.BuildMagnetLocation();   //It will be useful to establish the coordinates required for the magnet if you need to move the selected node
@@ -848,7 +904,13 @@ namespace ST.Library.UI.NodeEditor
                 if (e.Button == MouseButtons.Left)
                 {
                     this.SetActiveNode(null);
-                    foreach (var n in m_hs_node_selected.ToArray()) n.SetSelected(false, false);//Did not click anything to clear the selected node
+                    // Clear selections - use visual selection to avoid events
+                    foreach (var n in m_hs_node_selected.ToArray()) 
+                        this.SetVisualSelection(n, false);
+                    
+                    // Raise multi-selection event since we're clearing selections
+                    this.OnMultiSelectionChanged(EventArgs.Empty);
+                    
                     m_ca = CanvasAction.SelectRectangle;                    //Enter rectangular area selection mode
                     m_rect_select.Width = m_rect_select.Height = 0;
                     m_node_down = null;
@@ -862,6 +924,23 @@ namespace ST.Library.UI.NodeEditor
             m_pt_in_control = e.Location;
             m_pt_in_canvas.X = ((e.X - this._CanvasOffsetX) / this._CanvasScale);
             m_pt_in_canvas.Y = ((e.Y - this._CanvasOffsetY) / this._CanvasScale);
+
+            // Check if user has dragged (moved mouse more than a few pixels)
+            if (!m_has_dragged && e.Button == MouseButtons.Left) {
+                int dragDistance = Math.Abs(e.X - m_mouse_down_location.X) + Math.Abs(e.Y - m_mouse_down_location.Y);
+                if (dragDistance > 3) { // 3 pixel threshold for drag detection
+                    m_has_dragged = true;
+                    m_internal_suppress_selected_changed = true; // Don't raise SelectedChanged if user dragged
+                    
+                    // Add selected nodes to the dragged set for visual feedback
+                    lock (m_hs_node_selected) {
+                        foreach (STNode node in m_hs_node_selected) {
+                            m_nodes_being_dragged.Add(node);
+                        }
+                    }
+                    this.Invalidate(); // Redraw to show light outline
+                }
+            }
 
             if (e.Button == MouseButtons.Middle)
             {  //Move the canvas with the middle mouse button
@@ -889,10 +968,19 @@ namespace ST.Library.UI.NodeEditor
                         m_rect_select.Y = m_pt_down_in_canvas.Y < m_pt_in_canvas.Y ? m_pt_down_in_canvas.Y : m_pt_in_canvas.Y;
                         m_rect_select.Width = Math.Abs(m_pt_in_canvas.X - m_pt_down_in_canvas.X);
                         m_rect_select.Height = Math.Abs(m_pt_in_canvas.Y - m_pt_down_in_canvas.Y);
+                        
+                        // Use visual selection for rectangle selection (multi-selection)
                         foreach (STNode n in this._Nodes) {
                             if (n == null) continue;
-                            n.SetSelected(m_rect_select.IntersectsWith(n.Rectangle), false);
+                            bool shouldBeSelected = m_rect_select.IntersectsWith(n.Rectangle);
+                            this.SetVisualSelection(n, shouldBeSelected);
                         }
+                        
+                        // Raise multi-selection event instead of SelectedChanged
+                        if (m_has_dragged) {
+                            this.OnMultiSelectionChanged(EventArgs.Empty);
+                        }
+                        
                         this.Invalidate();
                         return;
                 }
@@ -966,9 +1054,72 @@ namespace ST.Library.UI.NodeEditor
             return ConnectionStatus.Disconnected;
         }
 
-        protected override void OnMouseUp(MouseEventArgs e) {
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
             base.OnMouseUp(e);
+            
+            // Enhanced drag detection - check if nodes actually moved
+            bool wasDragOperation = false;
+            if (m_original_node_positions.Count > 0)
+            {
+                foreach (var kvp in m_original_node_positions)
+                {
+                    var node = kvp.Key;
+                    var originalPos = kvp.Value;
+                    var currentPos = node.Location;
+                    
+                    if (Math.Abs(currentPos.X - originalPos.X) > 1 || Math.Abs(currentPos.Y - originalPos.Y) > 1)
+                    {
+                        wasDragOperation = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Also check if mouse moved significantly (backup detection)
+            if (!wasDragOperation && m_has_dragged)
+            {
+                wasDragOperation = true;
+            }
+            
+            // Only raise SelectedChanged if this wasn't a drag operation and we're not suppressing events
+            if (!wasDragOperation && m_external_event_raising_enabled && !m_internal_suppress_selected_changed)
+            {
+                this.OnSelectedChanged(EventArgs.Empty);
+            }
+            
+            // If this was a drag operation, ensure nodes return to their proper visual state
+            if (wasDragOperation) {
+                // After dragging, clear ALL selections including the active node
+                // This ensures that dragged nodes don't retain any selection outline
+                var nodesToDeselect = new List<STNode>();
+                foreach (var node in m_hs_node_selected.ToArray()) {
+                    nodesToDeselect.Add(node);
+                }
+                
+                // Deselect all nodes that were dragged
+                foreach (var node in nodesToDeselect) {
+                    this.SetVisualSelection(node, false);
+                }
+                
+                // Clear the active node as well to ensure no outline is shown
+                if (this._ActiveNode != null) {
+                    this._ActiveNode.IsActive = false;
+                    this._ActiveNode = null;
+                }
+                
+                // Force a redraw to ensure visual state is correct
+                this.Invalidate();
+            }
+            
+            // Clear the dragged nodes set and redraw to show proper selection outlines
+            if (m_nodes_being_dragged.Count > 0) {
+                m_nodes_being_dragged.Clear();
+            }
+            this.Invalidate();
+            
             var nfi = this.FindNodeFromPoint(m_pt_in_canvas);
+            
             switch (m_ca) {                         //Judging behavior when the mouse is raised
                 case CanvasAction.MoveNode:         //If you are moving Node, send NodesMoved event and re-record the current position
                     {
@@ -1003,7 +1154,15 @@ namespace ST.Library.UI.NodeEditor
                             m_option_down.ConnectOption(nfi.NodeOption);
                     }
                     break;
+                case CanvasAction.SelectRectangle:
+                    // For rectangle selection, we've already handled the visual selection in OnMouseMove
+                    // Just raise the multi-selection event if we dragged
+                    if (wasDragOperation) {
+                        this.OnMultiSelectionChanged(EventArgs.Empty);
+                    }
+                    break;
             }
+            
             if (m_is_process_mouse_event && this._ActiveNode != null) {
                 var mea = new MouseEventArgs(e.Button, e.Clicks,
                     (int)m_pt_in_canvas.X - this._ActiveNode.Left,
@@ -1013,7 +1172,6 @@ namespace ST.Library.UI.NodeEditor
             }
             m_is_process_mouse_event = true;        //The current disconnection operation does not carry out event delivery, and the event will be accepted next time
             m_ca = CanvasAction.None;
-            this.Invalidate();
         }
 
         protected override void OnMouseEnter(EventArgs e) {
@@ -1194,31 +1352,34 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="dt">Drawing tools</param>
         /// <param name="node">Target node</param>
         protected virtual void OnDrawNodeBorder(DrawingTools dt, STNode node) {
+            
             if (mRoundedCornerRadius == -1)
-            {
-                Image img_border = null;
-                if (this._ActiveNode == node) img_border = m_img_border_active;
-                else if (node.IsSelected) img_border = m_img_border_selected;
-                else if (this._HoverNode == node) img_border = m_img_border_hover;
-                else img_border = m_img_border;
-                this.RenderBorder(dt.Graphics, node.Rectangle, img_border);
-                if (!string.IsNullOrEmpty(node.Mark)) this.RenderBorder(dt.Graphics, node.MarkRectangle, img_border);
-            }
-            else
-            {
-                Rectangle borderRect = node.Rectangle;
-
-                Pen pen_border = null;
-                bool highlight = true;
-
-                if (this._ActiveNode == node) pen_border = m_pen_border_active;
-                else if (node.IsSelected) pen_border = m_pen_border_selected;
-                else if (this._HoverNode == node) pen_border = m_pen_border_hover;
-                else
                 {
-                    pen_border = m_pen_border;
-                    highlight = false;
+                    Image img_border = null;
+                    if (m_nodes_being_dragged.Contains(node)) img_border = m_img_border_selected; // Multi-selection color for dragged nodes
+                    else if (this._ActiveNode == node) img_border = m_img_border_active;
+                    else if (node.IsSelected) img_border = m_img_border_selected;
+                    else if (this._HoverNode == node) img_border = m_img_border_hover;
+                    else img_border = m_img_border;
+                    this.RenderBorder(dt.Graphics, node.Rectangle, img_border);
+                    if (!string.IsNullOrEmpty(node.Mark)) this.RenderBorder(dt.Graphics, node.MarkRectangle, img_border);
                 }
+                            else
+                {
+                    Rectangle borderRect = node.Rectangle;
+
+                    Pen pen_border = null;
+                    bool highlight = true;
+
+                    if (m_nodes_being_dragged.Contains(node)) pen_border = m_pen_border_selected; // Multi-selection color for dragged nodes
+                    else if (this._ActiveNode == node) pen_border = m_pen_border_active;
+                    else if (node.IsSelected) pen_border = m_pen_border_selected;
+                    else if (this._HoverNode == node) pen_border = m_pen_border_hover;
+                    else
+                    {
+                        pen_border = m_pen_border;
+                        highlight = false;
+                    }
 
                 if (highlight)
                 {
@@ -1528,6 +1689,31 @@ namespace ST.Library.UI.NodeEditor
         internal void InternalRemoveSelectedNode(STNode node) {
             node.IsSelected = false;
             lock (m_hs_node_selected) m_hs_node_selected.Remove(node);
+        }
+
+        /// <summary>
+        /// Sets the visual selection state of a node without raising the SelectedChanged event.
+        /// This is used for multi-selection and dragging scenarios.
+        /// </summary>
+        /// <param name="node">The node to set selection for</param>
+        /// <param name="selected">Whether the node should be visually selected</param>
+        internal void SetVisualSelection(STNode node, bool selected) {
+            if (selected)
+            {
+                node.IsSelected = true;
+                lock (m_hs_node_selected) {
+                    m_hs_node_selected.Add(node);
+                }
+            }
+            else
+            {
+                node.IsSelected = false;
+                lock (m_hs_node_selected) {
+                    m_hs_node_selected.Remove(node);
+                }
+            }
+            
+            this.Invalidate();
         }
 
         #endregion internal
@@ -2351,7 +2537,10 @@ namespace ST.Library.UI.NodeEditor
                 if (node != null) {
                     this._Nodes.MoveToEnd(node);
                     node.IsActive = true;
-                    node.SetSelected(true, false);
+                    
+                    // Don't duplicate selection logic - let the calling code handle selection
+                    // The selection should already be set by the time SetActiveNode is called
+                    
                     node.OnGotFocus(EventArgs.Empty);
                 }
                 if (this._ActiveNode != null) {
@@ -2421,6 +2610,23 @@ namespace ST.Library.UI.NodeEditor
                 this._TypeColor.Add(t, clr);
             }
             return this._TypeColor[t];
+        }
+
+        /// <summary>
+        /// Sets whether the SelectedChanged event should be raised for subsequent selection operations.
+        /// This allows external code to control when expensive selection operations should occur.
+        /// </summary>
+        /// <param name="shouldRaise">Whether to raise the SelectedChanged event</param>
+        public void SetSelectionEventRaising(bool shouldRaise) {
+            m_external_event_raising_enabled = shouldRaise;
+        }
+
+        /// <summary>
+        /// Gets whether the SelectedChanged event will be raised for selection operations.
+        /// </summary>
+        /// <returns>True if SelectedChanged events will be raised</returns>
+        public bool GetSelectionEventRaising() {
+            return m_external_event_raising_enabled;
         }
 
         #endregion public
