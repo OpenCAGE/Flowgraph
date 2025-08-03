@@ -1089,8 +1089,9 @@ namespace ST.Library.UI.NodeEditor
             }
             
             // If this was a drag operation, ensure nodes return to their proper visual state
-            if (wasDragOperation) {
-                // After dragging, clear ALL selections including the active node
+            // Only clear selections for node dragging, not for rectangle selection
+            if (wasDragOperation && m_ca == CanvasAction.MoveNode) {
+                // After dragging nodes, clear ALL selections including the active node
                 // This ensures that dragged nodes don't retain any selection outline
                 var nodesToDeselect = new List<STNode>();
                 foreach (var node in m_hs_node_selected.ToArray()) {
