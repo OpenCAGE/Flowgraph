@@ -422,7 +422,7 @@ namespace ST.Library.UI.NodeEditor
             {
                 if (TopOptionsCount <= 1)
                     return MinWidth;
-                int width = (MinWidth / TopOptionsCount) - (PinHorizontalPaddingTop * (TopOptionsCount - 1));
+                int width = MinWidth / TopOptionsCount;
                 if (width < 45)
                 {
                     if (TopOptionsCount < 7)
@@ -439,7 +439,7 @@ namespace ST.Library.UI.NodeEditor
             {
                 if (BottomOptionsCount <= 1)
                     return MinWidth;
-                int width = (MinWidth / BottomOptionsCount) - (PinHorizontalPaddingBottom * (BottomOptionsCount - 1));
+                int width = MinWidth / BottomOptionsCount;
                 if (width < 45)
                 {
                     if (BottomOptionsCount < 7)
@@ -1619,55 +1619,47 @@ namespace ST.Library.UI.NodeEditor
                 }
             }
 
-            using (var g = this.Owner.CreateGraphics())
+            int V_PADDING = PinVerticalPadding;
+
+            if (RenderingOptions && this.TopOptions.Count > 0)
             {
-                int V_PADDING = PinVerticalPadding;
-                int H_PADDING = PinHorizontalPaddingTop;
-                int MAX_WIDTH = MaxPinWidthTop;
+                float pinSlotWidth = (float)this.Width / this.TopOptions.Count;
 
-                float totalTopWidth = this.TopOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, MAX_WIDTH) + H_PADDING);
-                if (totalTopWidth > 0) totalTopWidth -= H_PADDING;
-                float currentX = this.Left + (this.Width - totalTopWidth) / 2f;
-                
-                foreach(STNodeOption op in this.TopOptions)
+                for (int i = 0; i < this.TopOptions.Count; i++)
                 {
+                    STNodeOption op = this.TopOptions[i];
                     if (op == STNodeOption.Empty) continue;
-                    float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
-                    float pinVisibleWidth = Math.Min(pinTextWidth, MAX_WIDTH);
-                    
-                    int y = this.Top + this._ItemHeight / 2 - op.DotSize / 2;
-                    if (op.Style == PinStyle.ArrowUp || op.Style == PinStyle.ArrowDown) 
-                        y = this.Top - this._ItemHeight + op.DotSize;
 
-                    op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
-                    op.DotTop = y;
+                    float currentSlotX = this.Left + (i * pinSlotWidth);
 
-                    op.TextRectangle = new Rectangle((int)currentX, this.Top + V_PADDING, (int)pinVisibleWidth, this._ItemHeight);
-                    currentX += pinVisibleWidth + H_PADDING;
+                    op.DotLeft = (int)(currentSlotX + (pinSlotWidth / 2f) - (op.DotSize / 2f));
+
+                    op.DotTop = this.Top + this._ItemHeight / 2 - op.DotSize / 2;
+                    if (op.Style == PinStyle.ArrowUp || op.Style == PinStyle.ArrowDown)
+                        op.DotTop = this.Top - this._ItemHeight + op.DotSize;
+            
+                    op.TextRectangle = new Rectangle((int)currentSlotX, this.Top + V_PADDING, (int)pinSlotWidth, this._ItemHeight);
                 }
+            }
 
-                H_PADDING = PinHorizontalPaddingBottom;
-                MAX_WIDTH = MaxPinWidthBottom;
+            if (RenderingOptions && this.BottomOptions.Count > 0)
+            {
+                float pinSlotWidth = (float)this.Width / this.BottomOptions.Count;
 
-                float totalBottomWidth = this.BottomOptions.Cast<STNodeOption>().Sum(op => Math.Min(g.MeasureString(op.Text, this.Font).Width, MAX_WIDTH) + H_PADDING);
-                if (totalBottomWidth > 0) totalBottomWidth -= H_PADDING;
-                currentX = this.Left + (this.Width - totalBottomWidth) / 2f;
-                
-                foreach(STNodeOption op in this.BottomOptions)
+                for (int i = 0; i < this.BottomOptions.Count; i++)
                 {
+                    STNodeOption op = this.BottomOptions[i];
                     if (op == STNodeOption.Empty) continue;
-                    float pinTextWidth = g.MeasureString(op.Text, this.Font).Width;
-                    float pinVisibleWidth = Math.Min(pinTextWidth, MAX_WIDTH);
 
-                    int y = this.Bottom - op.DotSize / 2;
-                    if (op.Style == PinStyle.ArrowDown || op.Style == PinStyle.ArrowUp) 
-                        y = this.Bottom; //todo ; this is wrong
+                    float currentSlotX = this.Left + (i * pinSlotWidth);
 
-                    op.DotLeft = (int)(currentX + (pinVisibleWidth / 2f) - (op.DotSize / 2f));
-                    op.DotTop = y;
+                    op.DotLeft = (int)(currentSlotX + (pinSlotWidth / 2f) - (op.DotSize / 2f));
 
-                    op.TextRectangle = new Rectangle((int)currentX, this.Bottom - this._ItemHeight, (int)pinVisibleWidth, this._ItemHeight - V_PADDING);
-                    currentX += pinVisibleWidth + H_PADDING;
+                    op.DotTop = this.Bottom - op.DotSize / 2;
+                    if (op.Style == PinStyle.ArrowDown || op.Style == PinStyle.ArrowUp)
+                        op.DotTop = this.Bottom; //todo ; this is wrong
+
+                    op.TextRectangle = new Rectangle((int)currentSlotX, this.Bottom - this._ItemHeight, (int)pinSlotWidth, this._ItemHeight - V_PADDING);
                 }
             }
         }
