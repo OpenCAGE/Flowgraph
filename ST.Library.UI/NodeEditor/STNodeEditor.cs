@@ -815,7 +815,7 @@ namespace ST.Library.UI.NodeEditor
                     }
                     nfi.Node.SetSelected(true, false);                      //Add to selected node
                     this.SetActiveNode(nfi.Node);
-                    if (this.PointInRectangle(nfi.Node.TitleRectangle, m_pt_down_in_canvas.X, m_pt_down_in_canvas.Y))
+                    if (this.PointInRectangle(nfi.Node.Rectangle, m_pt_down_in_canvas.X, m_pt_down_in_canvas.Y))
                     {
                         if (e.Button == MouseButtons.Right)
                         {
@@ -832,7 +832,7 @@ namespace ST.Library.UI.NodeEditor
                                 foreach (STNode n in m_hs_node_selected)    //Record the position of the selected node. It will be useful if you need to move the selected node.
                                     m_dic_pt_selected.Add(n, n.Location);
                             }
-                            m_ca = CanvasAction.MoveNode;                   //If you click the title of the node, you can move the node
+                            m_ca = CanvasAction.MoveNode;                  
                             if (this._ShowMagnet && this._ActiveNode != null) this.BuildMagnetLocation();   //It will be useful to establish the coordinates required for the magnet if you need to move the selected node
                         }
                     }
