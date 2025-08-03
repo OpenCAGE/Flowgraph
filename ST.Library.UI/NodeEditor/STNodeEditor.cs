@@ -150,6 +150,8 @@ namespace ST.Library.UI.NodeEditor
             set { _ShowMagnet = value; }
         }
 
+        public bool RemoveLinkOnRightClick = false;
+
         private bool _ShowBorder = true;
         /// <summary>
         /// Gets or sets whether to display the Node border in the moving canvas.
@@ -771,7 +773,10 @@ namespace ST.Library.UI.NodeEditor
             m_pt_canvas_old.Y = this._CanvasOffsetY;
 
             if (m_gp_hover != null && e.Button == MouseButtons.Right) {     //Disconnect
-                this.DisconnectionHover();
+                if (RemoveLinkOnRightClick)
+                {
+                    RemoveHoveredLink();
+                }
                 m_is_process_mouse_event = false; //Terminate MouseClick and MouseUp to pass down
                 return;
             }
@@ -930,6 +935,35 @@ namespace ST.Library.UI.NodeEditor
         {
             NodeFindInfo nfi = this.FindNodeFromPoint(m_pt_in_canvas);
             return nfi.Node;
+        }
+
+        public (STNodeOption, STNodeOption) GetHoveredLink() //Output, Input
+        {
+            if (m_gp_hover != null && m_dic_gp_info.ContainsKey(m_gp_hover))
+            {
+                ConnectionInfo ci = m_dic_gp_info[m_gp_hover];
+                return (ci.Output, ci.Input);
+            }
+            return (null, null);
+        }
+
+        public ConnectionStatus RemoveHoveredLink() 
+        {
+            if (m_dic_gp_info.ContainsKey(m_gp_hover))
+            {
+                ConnectionInfo ci = m_dic_gp_info[m_gp_hover];
+                var ret = ci.Output.DisconnectOption(ci.Input);
+                //this.OnOptionDisconnected(new STNodeOptionEventArgs(ci.Output, ci.Input, ret));
+                if (ret == ConnectionStatus.Disconnected)
+                {
+                    m_dic_gp_info.Remove(m_gp_hover);
+                    m_gp_hover.Dispose();
+                    m_gp_hover = null;
+                    this.Invalidate();
+                }
+                return ret;
+            }
+            return ConnectionStatus.Disconnected;
         }
 
         protected override void OnMouseUp(MouseEventArgs e) {
@@ -1575,20 +1609,6 @@ namespace ST.Library.UI.NodeEditor
                 }
             }
             return img;
-        }
-
-        private ConnectionStatus DisconnectionHover() {
-            if (!m_dic_gp_info.ContainsKey(m_gp_hover)) return ConnectionStatus.Disconnected;
-            ConnectionInfo ci = m_dic_gp_info[m_gp_hover];
-            var ret = ci.Output.DisconnectOption(ci.Input);
-            //this.OnOptionDisconnected(new STNodeOptionEventArgs(ci.Output, ci.Input, ret));
-            if (ret == ConnectionStatus.Disconnected) {
-                m_dic_gp_info.Remove(m_gp_hover);
-                m_gp_hover.Dispose();
-                m_gp_hover = null;
-                this.Invalidate();
-            }
-            return ret;
         }
 
         private void StartConnect(STNodeOption op) {

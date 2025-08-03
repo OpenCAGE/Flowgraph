@@ -1394,38 +1394,6 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
-        /// <summary>
-        /// Determines if a point is within the draggable area of the node (i.e., not on a pin hotspot).
-        /// </summary>
-        /// <param name="p">The point to test, in Node coordinates.</param>
-        /// <returns>True if the point is in a draggable area, otherwise false.</returns>
-        public virtual bool IsPointInDragArea(Point p)
-        {
-            if (!this.Rectangle.Contains(p)) return false;
-
-            // Combine all pins into one list to check against.
-            var allOptions = this.InputOptions.Cast<STNodeOption>()
-                .Concat(this.OutputOptions.Cast<STNodeOption>())
-                .Concat(this.TopOptions.Cast<STNodeOption>())
-                .Concat(this.BottomOptions.Cast<STNodeOption>());
-
-            foreach (STNodeOption op in allOptions)
-            {
-                if (op == STNodeOption.Empty) continue;
-
-                // Define a "hotspot" around the pin dot and its text to prevent dragging.
-                Rectangle dotHotspot = op.DotRectangle;
-                dotHotspot.Inflate(4, 4); // Add a 4px buffer around the pin dot.
-
-                if (dotHotspot.Contains(p) || op.TextRectangle.Contains(p))
-                {
-                    return false; // Point is on a pin, not draggable.
-                }
-            }
-
-            return true; // Point is on the node body/title, draggable.
-        }
-
         //[event]===========================[event]==============================[event]============================[event]
 
         protected internal virtual void OnGotFocus(EventArgs e) { }
