@@ -1617,6 +1617,48 @@ namespace ST.Library.UI.NodeEditor
                     op.TextRectangle = Rectangle.Empty; // No text is rendered
                     nIndex++;
                 }
+
+                // Handle top options when not rendering options
+                if (this.TopOptions.Count > 0)
+                {
+                    float pinSlotWidth = (float)this.Width / this.TopOptions.Count;
+
+                    for (int i = 0; i < this.TopOptions.Count; i++)
+                    {
+                        STNodeOption op = this.TopOptions[i];
+                        if (op == STNodeOption.Empty) continue;
+
+                        float currentSlotX = this.Left + (i * pinSlotWidth);
+
+                        op.DotLeft = (int)(currentSlotX + (pinSlotWidth / 2f) - (op.DotSize / 2f));
+                        op.DotTop = this.Top + this._ItemHeight / 2 - op.DotSize / 2;
+                        if (op.Style == PinStyle.ArrowUp || op.Style == PinStyle.ArrowDown)
+                            op.DotTop = this.Top - this._ItemHeight + op.DotSize;
+                
+                        op.TextRectangle = Rectangle.Empty; // No text is rendered
+                    }
+                }
+
+                // Handle bottom options when not rendering options
+                if (this.BottomOptions.Count > 0)
+                {
+                    float pinSlotWidth = (float)this.Width / this.BottomOptions.Count;
+
+                    for (int i = 0; i < this.BottomOptions.Count; i++)
+                    {
+                        STNodeOption op = this.BottomOptions[i];
+                        if (op == STNodeOption.Empty) continue;
+
+                        float currentSlotX = this.Left + (i * pinSlotWidth);
+
+                        op.DotLeft = (int)(currentSlotX + (pinSlotWidth / 2f) - (op.DotSize / 2f));
+                        op.DotTop = this.Bottom - op.DotSize / 2;
+                        if (op.Style == PinStyle.ArrowDown || op.Style == PinStyle.ArrowUp)
+                            op.DotTop = this.Bottom;
+
+                        op.TextRectangle = Rectangle.Empty; // No text is rendered
+                    }
+                }
             }
 
             int V_PADDING = PinVerticalPadding;
