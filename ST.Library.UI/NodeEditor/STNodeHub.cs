@@ -179,10 +179,10 @@ namespace ST.Library.UI.NodeEditor
                 if (this.Location == PinLocation.Bottom && op.Location != PinLocation.Top) return ConnectionStatus.InvalidLogicFlow;
 
                 if (op.Owner == null || this.Owner == null) return ConnectionStatus.NoOwner;
-                if (!this.Owner.Owner.AllowSameOwnerConnections && op.Owner == this.Owner) return ConnectionStatus.SameOwner;
+                if (this.Owner?.Owner?.AllowSameOwnerConnections == false && op.Owner == this.Owner) return ConnectionStatus.SameOwner;
                 if (this.Owner.LockOption || op.Owner.LockOption) return ConnectionStatus.Locked;
                 if (this.IsSingle && m_hs_connected.Count == 1) return ConnectionStatus.SingleOption;
-                if (!this.Owner.Owner.AllowNodeGraphLoops)
+                if (this.Owner?.Owner?.AllowNodeGraphLoops == false)
                 {
                     if (op.Location == PinLocation.Left && STNodeEditor.CanFindNodePath(op.Owner, this.Owner)) return ConnectionStatus.Loop;
                 }

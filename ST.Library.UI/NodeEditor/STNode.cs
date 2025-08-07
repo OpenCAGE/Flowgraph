@@ -849,18 +849,18 @@ namespace ST.Library.UI.NodeEditor
             if (this._BackColor.A != 0 && RenderingOptions) {
                 dt.SolidBrush.Color = this._BackColor;
                 Rectangle bodyRect = new Rectangle(this.Left, this.Top + top_space, this.Width, this.Height - top_space - bottom_space);
-                if (this.Owner.RoundedCornerRadius == -1)
+                if (this.Owner?.RoundedCornerRadius == -1)
                 {
                     dt.Graphics.FillRectangle(dt.SolidBrush, bodyRect);
                 }
                 else
                 {
                     if (BottomOptionsCount == 0 && TopOptionsCount == 0)
-                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius, true);
+                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0, true);
                     else if (BottomOptionsCount == 0)
-                        RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius);
+                        RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0);
                     else
-                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner.RoundedCornerRadius);
+                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0);
                 }
             }
 
@@ -868,10 +868,10 @@ namespace ST.Library.UI.NodeEditor
             if (top_space > 0) {
                 dt.SolidBrush.Color = this.PinAreaColor;
                 Rectangle topRect = new Rectangle(this.Left, this.Top, this.Width, top_space);
-                if (this.Owner.RoundedCornerRadius == -1) {
+                if (this.Owner?.RoundedCornerRadius == -1) {
                     dt.Graphics.FillRectangle(dt.SolidBrush, topRect);
                 } else {
-                    RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, topRect, Owner.RoundedCornerRadius, false);
+                    RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, topRect, Owner?.RoundedCornerRadius ?? 0, false);
                 }
             }
 
@@ -879,10 +879,10 @@ namespace ST.Library.UI.NodeEditor
             if (bottom_space > 0) {
                 dt.SolidBrush.Color = this.PinAreaColor;
                 Rectangle bottomRect = new Rectangle(this.Left, this.Bottom - bottom_space, this.Width, bottom_space);
-                if (this.Owner.RoundedCornerRadius == -1) {
+                if (this.Owner?.RoundedCornerRadius == -1) {
                     dt.Graphics.FillRectangle(dt.SolidBrush, bottomRect);
                 } else {
-                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bottomRect, Owner.RoundedCornerRadius);
+                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bottomRect, Owner?.RoundedCornerRadius ?? 0);
                 }
             }
             
@@ -905,7 +905,7 @@ namespace ST.Library.UI.NodeEditor
             // Draw the title bar background
             if (this._TitleColor.A != 0) {
                 brush.Color = this._TitleColor;
-                if (this.Owner.RoundedCornerRadius == -1) {
+                if (this.Owner?.RoundedCornerRadius == -1) {
                     g.FillRectangle(brush, this.TitleRectangle);
                 } else {
                     bool hasTopBar = (RenderingOptions && this.TopOptions.Count > 0);
@@ -914,13 +914,13 @@ namespace ST.Library.UI.NodeEditor
 
                     if (!hasTopBar && hasBottomContent) {
                         // Case 1: Is the top-most element, but has content below. Round top corners only.
-                        RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, false);
+                        RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0, false);
                     } else if (!hasTopBar && !hasBottomContent) {
                         // Case 2: Is the only element (or the node is a variable type). Round all corners.
-                        RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius, true);
+                        RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0, true);
                     } else if (hasTopBar && !hasBottomContent) {
                         // Case 3: Sits below a top bar and is the bottom-most element. Round bottom corners only.
-                        RoundedCornerUtils.FillRoundedRectangleBottom(g, brush, this.TitleRectangle, Owner.RoundedCornerRadius);
+                        RoundedCornerUtils.FillRoundedRectangleBottom(g, brush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0);
                     } else { // (hasTopBar && hasBottomContent)
                         // Case 4: Sits between a top bar and content below. No rounding.
                         g.FillRectangle(brush, this.TitleRectangle);
@@ -1089,9 +1089,9 @@ namespace ST.Library.UI.NodeEditor
             else
             {
                 if (op.DataType == t)
-                    brush.Color = this.Owner.UnknownTypeColor;
+                    brush.Color = this.Owner?.UnknownTypeColor ?? Color.Gray;
                 else
-                    brush.Color = this.Owner.TypeColor.ContainsKey(op.DataType) ? this.Owner.TypeColor[op.DataType] : this.Owner.UnknownTypeColor;
+                    brush.Color = this.Owner?.TypeColor?.ContainsKey(op.DataType) == true ? this.Owner.TypeColor[op.DataType] : (this.Owner?.UnknownTypeColor ?? Color.Gray);
             }
 
             g.SmoothingMode = SmoothingMode.AntiAlias;
