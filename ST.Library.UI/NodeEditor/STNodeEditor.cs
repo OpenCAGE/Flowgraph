@@ -141,7 +141,7 @@ namespace ST.Library.UI.NodeEditor
         }
 
         private float _SelfConnectionCurvatureMultiplier = 1.5F;
-        [Description("Gets or sets the curvature multiplier for self-connections (connections within the same node)."), DefaultValue(3.0F)]
+        [Description("Gets or sets the curvature multiplier for self-connections (connections within the same node)."), DefaultValue(1.5F)]
         public float SelfConnectionCurvatureMultiplier {
             get { return this._SelfConnectionCurvatureMultiplier; }
             set { 
