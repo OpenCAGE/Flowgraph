@@ -140,6 +140,16 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        private float _SelfConnectionCurvatureMultiplier = 1.5F;
+        [Description("Gets or sets the curvature multiplier for self-connections (connections within the same node)."), DefaultValue(3.0F)]
+        public float SelfConnectionCurvatureMultiplier {
+            get { return this._SelfConnectionCurvatureMultiplier; }
+            set { 
+                this._SelfConnectionCurvatureMultiplier = value;
+                if (m_dic_gp_info.Count != 0) this.BuildLinePath();
+            }
+        }
+
         private bool _ShowMagnet = true;
         /// <summary>
         /// Gets or sets whether to enable the magnet effect when moving the Node in the canvas.
@@ -1432,22 +1442,26 @@ namespace ST.Library.UI.NodeEditor
                         PointF startPt = new PointF(op.DotLeft + op.DotSize / 2f, op.DotTop + op.DotSize / 2f);
                         PointF endPt = new PointF(v.DotLeft + v.DotSize / 2f, v.DotTop + v.DotSize / 2f);
                         
+                        // Check if this is a self-connection (both options belong to the same node)
+                        bool isSelfConnection = op.Owner == v.Owner;
+                        float curvature = isSelfConnection ? _Curvature * _SelfConnectionCurvatureMultiplier : _Curvature;
+                        
                         if (isVertical)
                         {
-                            DrawVerticalBezier(g, m_p_line_hover, startPt, endPt, _Curvature, isTop);
-                            DrawVerticalBezier(g, m_p_line, startPt, endPt, _Curvature, isTop);
+                            DrawVerticalBezier(g, m_p_line_hover, startPt, endPt, curvature, isTop);
+                            DrawVerticalBezier(g, m_p_line, startPt, endPt, curvature, isTop);
                             if (m_is_buildpath)
                             {
-                                m_dic_gp_info.Add(CreateVerticalBezierPath(startPt, endPt, _Curvature, isTop), new ConnectionInfo() { Output = op, Input = v });
+                                m_dic_gp_info.Add(CreateVerticalBezierPath(startPt, endPt, curvature, isTop), new ConnectionInfo() { Output = op, Input = v });
                             }
                         }
                         else
                         {
-                            DrawHorizontalBezier(g, m_p_line_hover, startPt, endPt, _Curvature);
-                            DrawHorizontalBezier(g, m_p_line, startPt, endPt, _Curvature);
+                            DrawHorizontalBezier(g, m_p_line_hover, startPt, endPt, curvature);
+                            DrawHorizontalBezier(g, m_p_line, startPt, endPt, curvature);
                             if (m_is_buildpath)
                             {
-                                m_dic_gp_info.Add(CreateHorizontalBezierPath(startPt, endPt, _Curvature), new ConnectionInfo() { Output = op, Input = v });
+                                m_dic_gp_info.Add(CreateHorizontalBezierPath(startPt, endPt, curvature), new ConnectionInfo() { Output = op, Input = v });
                             }
                         }
                     }
@@ -1925,7 +1939,7 @@ namespace ST.Library.UI.NodeEditor
 
         private void DrawHorizontalBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f) {
             float n = (Math.Abs(ptStart.X - ptEnd.X) * f);
-            if (this._Curvature != 0 && n < 30) n = 30;
+            if (f != 0 && n < 30) n = 30;
             g.DrawBezier(p,
                 ptStart.X, ptStart.Y,
                 ptStart.X + n, ptStart.Y,
@@ -1935,7 +1949,7 @@ namespace ST.Library.UI.NodeEditor
 
         private void DrawVerticalBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f, bool startPinIsOnTop) {
             float n = (Math.Abs(ptStart.Y - ptEnd.Y) * f);
-            if (this._Curvature != 0 && n < 30) n = 30;
+            if (f != 0 && n < 30) n = 30;
             
             float startOffset = startPinIsOnTop ? -n : n;
             float endOffset = startPinIsOnTop ? n : -n;
@@ -1950,7 +1964,7 @@ namespace ST.Library.UI.NodeEditor
         private GraphicsPath CreateHorizontalBezierPath(PointF ptStart, PointF ptEnd, float f) {
             GraphicsPath gp = new GraphicsPath();
             float n = (Math.Abs(ptStart.X - ptEnd.X) * f);
-            if (this._Curvature != 0 && n < 30) n = 30;
+            if (f != 0 && n < 30) n = 30;
             gp.AddBezier(
                 ptStart.X, ptStart.Y,
                 ptStart.X + n, ptStart.Y,
@@ -1963,7 +1977,7 @@ namespace ST.Library.UI.NodeEditor
         private GraphicsPath CreateVerticalBezierPath(PointF ptStart, PointF ptEnd, float f, bool startPinIsOnTop) {
             GraphicsPath gp = new GraphicsPath();
             float n = (Math.Abs(ptStart.Y - ptEnd.Y) * f);
-            if (this._Curvature != 0 && n < 30) n = 30;
+            if (f != 0 && n < 30) n = 30;
 
             float startOffset = startPinIsOnTop ? -n : n;
             float endOffset = startPinIsOnTop ? n : -n;
