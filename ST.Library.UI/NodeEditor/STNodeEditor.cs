@@ -44,6 +44,38 @@ SOFTWARE.
  */
 namespace ST.Library.UI.NodeEditor
 {
+    /// <summary>
+    /// Provides data for the <see cref="STNodeEditor.PinToNodeConnected"/> event.
+    /// </summary>
+    public class STNodeEditorPinToNodeEventArgs : EventArgs
+    {
+        /// <summary>
+        /// The pin from which the connection was initiated.
+        /// </summary>
+        public STNodeOption FromPin { get; }
+        /// <summary>
+        /// The node onto which the connection line was dropped.
+        /// </summary>
+        public STNode ToNode { get; }
+        /// <summary>
+        /// The node that owns the source pin.
+        /// </summary>
+        public STNode FromNode => FromPin.Owner;
+
+        public STNodeEditorPinToNodeEventArgs(STNodeOption fromPin, STNode toNode)
+        {
+            this.FromPin = fromPin;
+            this.ToNode = toNode;
+        }
+    }
+
+    /// <summary>
+    /// Represents the method that will handle the <see cref="STNodeEditor.PinToNodeConnected"/> event.
+    /// </summary>
+    /// <param name="sender">The source of the event.</param>
+    /// <param name="e">A <see cref="STNodeEditorPinToNodeEventArgs"/> that contains the event data.</param>
+    public delegate void STNodeEditorPinToNodeEventHandler(object sender, STNodeEditorPinToNodeEventArgs e);
+
     public class STNodeEditor : Control
     {
         private const UInt32 WM_MOUSEHWHEEL = 0x020E;
@@ -638,6 +670,12 @@ namespace ST.Library.UI.NodeEditor
         [Description("Occurs when one or more nodes have been moved around the canvas.")]
         public event STNodesMovedEventHandler NodesMoved;
 
+        /// <summary>
+        /// Occurs when a connection line is dragged from a pin and dropped onto a node's body.
+        /// </summary>
+        [Description("Occurs when a connection line is dragged from a pin and dropped onto a node's body.")]
+        public event STNodeEditorPinToNodeEventHandler PinToNodeConnected;
+
         protected virtual internal void OnSelectedChanged(EventArgs e) {
             if (this.SelectedChanged != null) this.SelectedChanged(this, e);
         }
@@ -676,6 +714,11 @@ namespace ST.Library.UI.NodeEditor
         }
         protected internal virtual void OnNodesMoved(STNodesMovedEventArgs e) {
             if (this.NodesMoved != null) this.NodesMoved(this, e);
+        }
+
+        protected virtual void OnPinToNodeConnected(STNodeEditorPinToNodeEventArgs e)
+        {
+            if (this.PinToNodeConnected != null) this.PinToNodeConnected(this, e);
         }
 
         #endregion event
@@ -1163,6 +1206,12 @@ namespace ST.Library.UI.NodeEditor
                             nfi.NodeOption.ConnectOption(m_option_down);
                         else
                             m_option_down.ConnectOption(nfi.NodeOption);
+                    }
+                    else if (nfi.Node != null && nfi.Node != m_option_down.Owner)
+                    {
+                        // The mouse was released over a node, but not a specific pin.
+                        // Fire the new event with the source pin and target node.
+                        this.OnPinToNodeConnected(new STNodeEditorPinToNodeEventArgs(m_option_down, nfi.Node));
                     }
                     break;
                 case CanvasAction.SelectRectangle:

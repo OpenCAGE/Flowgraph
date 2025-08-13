@@ -1744,6 +1744,15 @@ namespace ST.Library.UI.NodeEditor
             for (int i = 0; i < this._BottomOptions.Count; i++) ops[i] = this._BottomOptions[i];
             return ops;
         }
+        public STNodeOption[] GetAllOptions() {
+            if (!this._LetGetOptions) return null;
+            List<STNodeOption> opts = new List<STNodeOption>(this._InputOptions.Count + this._OutputOptions.Count + this._TopOptions.Count + this._BottomOptions.Count);
+            for (int i = 0; i < this._InputOptions.Count; i++) opts.Add(this._InputOptions[i]);
+            for (int i = 0; i < this._OutputOptions.Count; i++) opts.Add(this._OutputOptions[i]);
+            for (int i = 0; i < this._TopOptions.Count; i++) opts.Add(this._TopOptions[i]);
+            for (int i = 0; i < this._BottomOptions.Count; i++) opts.Add(this._BottomOptions[i]);
+            return opts.ToArray();
+        }
         public void SetSelected(bool bSelected, bool bRedraw) {
             if (this._IsSelected == bSelected) return;
             this._IsSelected = bSelected;
