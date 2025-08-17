@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -85,6 +85,46 @@ namespace ST.Library.UI.NodeEditor
                 this._Owner.BuildSize(true, true, true);
             }
             */
+        }
+
+        // New properties for optional text display
+        private string _LeftText = "";
+        /// <summary>
+        /// Get or set optional text to display on the left of the pin (for left-side pins)
+        /// </summary>
+        public string LeftText {
+            get { return _LeftText; }
+            set {
+                if (value == _LeftText) return;
+                _LeftText = value;
+                this.Invalidate();
+            }
+        }
+
+        private string _RightText = "";
+        /// <summary>
+        /// Get or set optional text to display on the right of the pin (for right-side pins)
+        /// </summary>
+        public string RightText {
+            get { return _RightText; }
+            set {
+                if (value == _RightText) return;
+                _RightText = value;
+                this.Invalidate();
+            }
+        }
+
+        private Color _OptionalTextColor = Color.Red;
+        /// <summary>
+        /// Get or set the color for optional text display
+        /// </summary>
+        public Color OptionalTextColor {
+            get { return _OptionalTextColor; }
+            set {
+                if (value == _OptionalTextColor) return;
+                _OptionalTextColor = value;
+                this.Invalidate();
+            }
         }
 
         private ShortGuid _shortGUID;

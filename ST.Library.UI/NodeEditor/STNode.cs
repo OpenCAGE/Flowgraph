@@ -1198,6 +1198,95 @@ namespace ST.Library.UI.NodeEditor
             }
     
             m_sf.LineAlignment = StringAlignment.Center;
+
+            // Draw optional text if specified
+            OnDrawOptionalText(dt, op);
+        }
+
+        /// <summary>
+        /// Draw optional text on pins (left text for left pins, right text for right pins)
+        /// </summary>
+        /// <param name="dt">Drawing tools</param>
+        /// <param name="op">The pin option</param>
+        protected virtual void OnDrawOptionalText(DrawingTools dt, STNodeOption op)
+        {
+            if (!RenderingOptions)
+                return;
+
+            Graphics g = dt.Graphics;
+            SolidBrush brush = dt.SolidBrush;
+            
+            string optionalText = "";
+            bool isLeftPin = op.Location == PinLocation.Left;
+            bool isRightPin = op.Location == PinLocation.Right;
+            
+            // Determine which optional text to show
+            if (isLeftPin && !string.IsNullOrEmpty(op.LeftText))
+            {
+                optionalText = op.LeftText;
+            }
+            else if (isRightPin && !string.IsNullOrEmpty(op.RightText))
+            {
+                optionalText = op.RightText;
+            }
+            
+            if (string.IsNullOrEmpty(optionalText))
+                return;
+
+            // Calculate text position
+            RectangleF textRect = op.TextRectangle;
+            Font fontToUse = this.Font;
+            bool fontCreated = false;
+
+            // Apply smooth scaling
+            float zoom = dt.Graphics.Transform.Elements[0];
+            if (zoom > 0) {
+                float newSize = Math.Min(this.Font.Size / zoom, this.Font.Size);
+                fontToUse = new Font(this.Font.FontFamily, newSize, this.Font.Style);
+                fontCreated = true;
+            }
+
+            // Calculate text size and position
+            SizeF textSize = g.MeasureString(optionalText, fontToUse);
+            
+            // Position the optional text
+            float x, y;
+            if (isLeftPin)
+            {
+                // For left pins, show text to the left of the pin
+                x = op.DotLeft - textSize.Width - 5; // 5 pixels spacing
+                y = op.DotTop + (op.DotSize - textSize.Height) / 2;
+            }
+            else if (isRightPin)
+            {
+                // For right pins, show text to the right of the pin
+                x = op.DotLeft + op.DotSize + 5; // 5 pixels spacing
+                y = op.DotTop + (op.DotSize - textSize.Height) / 2;
+            }
+            else
+            {
+                return; // Only support left/right pins for now
+            }
+
+            // Create text rectangle
+            RectangleF optionalTextRect = new RectangleF(x, y, textSize.Width, textSize.Height);
+
+            // Use a clipping region to ensure text is clipped properly
+            Region oldClip = g.Clip;
+            g.SetClip(optionalTextRect, CombineMode.Intersect);
+
+            // Draw the optional text
+            brush.Color = op.OptionalTextColor;
+            g.SmoothingMode = SmoothingMode.HighQuality;
+            g.DrawString(optionalText, fontToUse, brush, optionalTextRect, m_sf);
+
+            // Restore the original graphics state
+            g.SetClip(oldClip, CombineMode.Replace);
+            g.SmoothingMode = SmoothingMode.None;
+
+            if (fontCreated) {
+                fontToUse.Dispose();
+            }
         }
         protected virtual Point OnSetOptionDotLocation(STNodeOption op, Point pt, int nIndex) {
             return pt;
@@ -1707,9 +1796,42 @@ namespace ST.Library.UI.NodeEditor
         }
 
         public void Invalidate() {
-            if (this._Owner != null) {
-                this._Owner.Invalidate(this._Owner.CanvasToControl(new Rectangle(this._Left - 10, this._Top - 30, this._Width + 20, this._Height + 60)));
+            if (this._Owner == null) return;
+            
+            // Check if any pins have optional text that needs to be redrawn
+            bool hasOptionalText = false;
+            int leftExtension = 10;
+            int rightExtension = 10;
+            
+            // Check all pins for optional text
+            foreach (STNodeOption op in this._InputOptions)
+            {
+                if (!string.IsNullOrEmpty(op.LeftText))
+                {
+                    hasOptionalText = true;
+                    // Estimate text width for left pins (more generous estimate)
+                    leftExtension = Math.Max(leftExtension, op.LeftText.Length * 12 + 15);
+                }
             }
+            foreach (STNodeOption op in this._OutputOptions)
+            {
+                if (!string.IsNullOrEmpty(op.RightText))
+                {
+                    hasOptionalText = true;
+                    // Estimate text width for right pins
+                    rightExtension = Math.Max(rightExtension, op.RightText.Length * 8 + 10);
+                }
+            }
+            
+            // Create invalidation rectangle with appropriate extensions
+            Rectangle invalidateRect = new Rectangle(
+                this._Left - leftExtension, 
+                this._Top - 30, 
+                this._Width + leftExtension + rightExtension, 
+                this._Height + 60
+            );
+            
+            this._Owner.Invalidate(this._Owner.CanvasToControl(invalidateRect));
         }
         public void Invalidate(Rectangle rect) {
             rect.X += this._Left;
