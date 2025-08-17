@@ -317,7 +317,7 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public bool AutoSize {
             get { return _AutoSize; }
-            protected set { _AutoSize = value; }
+            set { _AutoSize = value; }
         }
         /// <summary>
         /// Get the coordinates of the right side of Node.
@@ -752,7 +752,7 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         protected STNodeControl m_ctrl_down;
 
-        protected internal void BuildSize(bool bBuildNode, bool bBuildMark, bool bRedraw) {
+        public void BuildSize(bool bBuildNode, bool bBuildMark, bool bRedraw) {
             if (this._Owner == null) return;
             using (Graphics g = this._Owner.CreateGraphics()) {
                 if (this._AutoSize && bBuildNode) {
@@ -1525,7 +1525,7 @@ namespace ST.Library.UI.NodeEditor
         /// <summary>
         /// Calculate the position of each option.
         /// </summary>
-        protected virtual void SetOptionsLocation() {
+        public virtual void SetOptionsLocation() {
             if (Owner == null) return;
 
             int top_space = (RenderingOptions && this.TopOptions.Count > 0) ? this._ItemHeight : 0;
