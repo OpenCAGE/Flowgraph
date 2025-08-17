@@ -1088,6 +1088,12 @@ namespace ST.Library.UI.NodeEditor
             return (null, null);
         }
 
+        public STNodeOption GetHoveredPin()
+        {
+            NodeFindInfo nfi = this.FindNodeFromPoint(m_pt_in_canvas);
+            return nfi.NodeOption;
+        }
+
         public ConnectionStatus RemoveHoveredLink() 
         {
             if (m_dic_gp_info.ContainsKey(m_gp_hover))
