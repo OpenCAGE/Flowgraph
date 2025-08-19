@@ -1235,14 +1235,14 @@ namespace ST.Library.UI.NodeEditor
 
             // Calculate text position
             RectangleF textRect = op.TextRectangle;
-            Font fontToUse = this.Font;
+            Font fontToUse = this._FontBold;
             bool fontCreated = false;
 
             // Apply smooth scaling
             float zoom = dt.Graphics.Transform.Elements[0];
             if (zoom > 0) {
-                float newSize = Math.Min(this.Font.Size / zoom, this.Font.Size);
-                fontToUse = new Font(this.Font.FontFamily, newSize, this.Font.Style);
+                float newSize = Math.Min(this._FontBold.Size / zoom, this._FontBold.Size);
+                fontToUse = new Font(this._FontBold.FontFamily, newSize, this._FontBold.Style);
                 fontCreated = true;
             }
 

@@ -114,7 +114,7 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
-        private Color _OptionalTextColor = Color.Red;
+        private Color _OptionalTextColor = Color.Orange;
         /// <summary>
         /// Get or set the color for optional text display
         /// </summary>
