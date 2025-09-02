@@ -10,6 +10,7 @@ using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System.Drawing.Drawing2D;
 using System.Diagnostics;
+using CATHODE.Animations;
 /*
 MIT License
 
@@ -569,6 +570,20 @@ namespace ST.Library.UI.NodeEditor
             }
         }
         public ShortGuid ShortGUID => Entity.shortGUID;
+
+        public AnimationNode _animationNode = null;
+        public AnimationNode AnimationNode
+        {
+            get { return _animationNode; }
+            set
+            {
+                _animationNode = value;
+                if (_animationNode != null)
+                    SetName(_animationNode.Name, _animationNode.Type.ToString());
+                else
+                    SetName("", "");
+            }
+        }
 
         private bool _shouldRenderOptions = true;
         public bool RenderingOptions => _shouldRenderOptions;
