@@ -726,6 +726,34 @@ namespace ST.Library.UI.NodeEditor
                     return this.BottomOptions[i];
             return null;
         }
+        public STNodeOption GetInputOption(ShortGuid option)
+        {
+            for (int i = 0; i < this.InputOptions.Count; i++)
+                if (this.InputOptions[i].ShortGUID == option)
+                    return this.InputOptions[i];
+            return null;
+        }
+        public STNodeOption GetOutputOption(ShortGuid option)
+        {
+            for (int i = 0; i < this.OutputOptions.Count; i++)
+                if (this.OutputOptions[i].ShortGUID == option)
+                    return this.OutputOptions[i];
+            return null;
+        }
+        public STNodeOption GetTopOption(ShortGuid option)
+        {
+            for (int i = 0; i < this.TopOptions.Count; i++)
+                if (this.TopOptions[i].ShortGUID == option)
+                    return this.TopOptions[i];
+            return null;
+        }
+        public STNodeOption GetBottomOption(ShortGuid option)
+        {
+            for (int i = 0; i < this.BottomOptions.Count; i++)
+                if (this.BottomOptions[i].ShortGUID == option)
+                    return this.BottomOptions[i];
+            return null;
+        }
 
         public void RemoveInputOption(ShortGuid option)
         {
