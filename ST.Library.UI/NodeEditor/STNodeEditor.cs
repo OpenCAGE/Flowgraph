@@ -1096,6 +1096,8 @@ namespace ST.Library.UI.NodeEditor
 
         public ConnectionStatus RemoveHoveredLink() 
         {
+            if (m_gp_hover == null) return ConnectionStatus.Reject;
+
             if (m_dic_gp_info.ContainsKey(m_gp_hover))
             {
                 ConnectionInfo ci = m_dic_gp_info[m_gp_hover];
