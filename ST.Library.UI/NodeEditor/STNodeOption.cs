@@ -422,7 +422,7 @@ namespace ST.Library.UI.NodeEditor
             if (status != ConnectionStatus.Connected)
             {
                 Console.WriteLine("Failed to connect option: " + status);
-                MessageBox.Show("FAILED to connect option! Please breakpoint STNodeOption.");
+                MessageBox.Show("FAILED to connect option: " + status + "!\nPlease breakpoint STNodeOption.");
             }
 #endif
             return status;
