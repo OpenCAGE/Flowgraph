@@ -2,3 +2,6 @@
 /Bin
 bin/
 obj/
+
+.vs/*
+ST.Library.UI/.vs*
