@@ -572,6 +572,7 @@ namespace ST.Library.UI.NodeEditor
         private HashSet<STNode> m_hs_node_selected = new HashSet<STNode>();
 
         private bool m_is_process_mouse_event = true;               //Whether to pass mouse-related events downwards (Node or NodeControls), such as disconnection-related operations should not be passed downwards
+        private bool m_suppress_middle_mouse_pan = false;
         private bool m_is_buildpath;                                //Used to determine whether to re-establish the cache connection path during the redrawing process
         private bool m_has_dragged = false;                         //Whether the user has dragged the mouse since mouse down
         private bool m_external_event_raising_enabled = true;       //External API control for SelectedChanged event raising
@@ -675,6 +676,11 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         [Description("Occurs when a connection line is dragged from a pin and dropped onto a node's body.")]
         public event STNodeEditorPinToNodeEventHandler PinToNodeConnected;
+        /// <summary>
+        /// Occurs when Ctrl+middle mouse is pressed on a node.
+        /// </summary>
+        [Description("Occurs when Ctrl+middle mouse is pressed on a node.")]
+        public event STNodeEditorEventHandler NodeCtrlMiddleMouseDown;
 
         protected virtual internal void OnSelectedChanged(EventArgs e) {
             if (this.SelectedChanged != null) this.SelectedChanged(this, e);
@@ -719,6 +725,11 @@ namespace ST.Library.UI.NodeEditor
         protected virtual void OnPinToNodeConnected(STNodeEditorPinToNodeEventArgs e)
         {
             if (this.PinToNodeConnected != null) this.PinToNodeConnected(this, e);
+        }
+
+        protected virtual void OnNodeCtrlMiddleMouseDown(STNodeEditorEventArgs e)
+        {
+            if (this.NodeCtrlMiddleMouseDown != null) this.NodeCtrlMiddleMouseDown(this, e);
         }
 
         #endregion event
@@ -873,6 +884,14 @@ namespace ST.Library.UI.NodeEditor
             }
 
             if (nfi.Node != null) {
+                if (e.Button == MouseButtons.Middle && (Control.ModifierKeys & Keys.Control) == Keys.Control)
+                {
+                    m_suppress_middle_mouse_pan = true;
+                    this.OnNodeCtrlMiddleMouseDown(new STNodeEditorEventArgs(nfi.Node));
+                    m_is_process_mouse_event = false;
+                    return;
+                }
+
                 nfi.Node.OnMouseDown(new MouseEventArgs(e.Button, e.Clicks, (int)m_pt_down_in_canvas.X - nfi.Node.Left, (int)m_pt_down_in_canvas.Y - nfi.Node.Top, e.Delta));
 
                 if (e.Button == MouseButtons.Left)
@@ -995,7 +1014,7 @@ namespace ST.Library.UI.NodeEditor
                 }
             }
 
-            if (e.Button == MouseButtons.Middle)
+            if (e.Button == MouseButtons.Middle && !m_suppress_middle_mouse_pan)
             {  //Move the canvas with the middle mouse button
                 this._CanvasOffsetX = m_real_canvas_x = m_pt_canvas_old.X + (e.X - m_pt_down_in_control.X);
                 this._CanvasOffsetY = m_real_canvas_y = m_pt_canvas_old.Y + (e.Y - m_pt_down_in_control.Y);
@@ -1118,6 +1137,7 @@ namespace ST.Library.UI.NodeEditor
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            m_suppress_middle_mouse_pan = false;
             
             // Enhanced drag detection - check if nodes actually moved
             bool wasDragOperation = false;
