@@ -125,6 +125,9 @@ namespace ST.Library.UI.NodeEditor
     {
         public STNodeOption Input;
         public STNodeOption Output;
+        /// <summary>Axis-aligned bounds of the cubic bezier (control-point hull), inflated for hit-testing.</summary>
+        public RectangleF HitBounds;
+        public PointF P0, P1, P2, P3;
     }
 
     public delegate void STNodeOptionEventHandler(object sender, STNodeOptionEventArgs e);

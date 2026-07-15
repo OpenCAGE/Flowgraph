@@ -862,13 +862,21 @@ namespace ST.Library.UI.NodeEditor
             m_pt_canvas_old.X = this._CanvasOffsetX;
             m_pt_canvas_old.Y = this._CanvasOffsetY;
             
-            if (m_gp_hover != null && e.Button == MouseButtons.Right) {     //Disconnect
-                if (RemoveLinkOnRightClick)
-                {
-                    RemoveHoveredLink();
+            if (e.Button == MouseButtons.Right) {
+                // Fresh hit-test at click point so disconnect / context menu don't depend on a lagged hover path.
+                // Nodes take priority (same as OnMouseMove) so right-click on a node does not pick a link behind it.
+                NodeFindInfo nfiOverNode = this.FindNodeFromPoint(m_pt_down_in_canvas);
+                if (nfiOverNode.Node == null) {
+                    m_gp_hover = this.FindConnectionPathAt(m_pt_down_in_canvas);
+                    if (m_gp_hover != null) {                                  //Disconnect
+                        if (RemoveLinkOnRightClick)
+                        {
+                            RemoveHoveredLink();
+                        }
+                        m_is_process_mouse_event = false; //Terminate MouseClick and MouseUp to pass down
+                        return;
+                    }
                 }
-                m_is_process_mouse_event = false; //Terminate MouseClick and MouseUp to pass down
-                return;
             }
 
             NodeFindInfo nfi = this.FindNodeFromPoint(m_pt_down_in_canvas);
@@ -1076,13 +1084,7 @@ namespace ST.Library.UI.NodeEditor
                     (int)m_pt_in_canvas.Y - this._HoverNode.Top, e.Delta));
                 m_gp_hover = null;
             } else {
-                GraphicsPath gp = null;
-                foreach (var v in m_dic_gp_info) {          //Determine whether the mouse is hovering over the connection path
-                    if (v.Key.IsOutlineVisible(m_pt_in_canvas, m_p_line_hover)) {
-                        gp = v.Key;
-                        break;
-                    }
-                }
+                GraphicsPath gp = this.FindConnectionPathAt(m_pt_in_canvas);
                 if (m_gp_hover != gp) {
                     m_gp_hover = gp;
                     bRedraw = true;
@@ -1099,9 +1101,15 @@ namespace ST.Library.UI.NodeEditor
 
         public (STNodeOption, STNodeOption) GetHoveredLink() //Output, Input
         {
-            if (m_gp_hover != null && m_dic_gp_info.ContainsKey(m_gp_hover))
+            // Live hit-test so right-click menus stay accurate when hover tracking lagged.
+            // Skip when over a node — same priority as OnMouseMove.
+            if (this.FindNodeFromPoint(m_pt_in_canvas).Node != null)
+                return (null, null);
+
+            GraphicsPath gp = this.FindConnectionPathAt(m_pt_in_canvas);
+            if (gp != null && m_dic_gp_info.ContainsKey(gp))
             {
-                ConnectionInfo ci = m_dic_gp_info[m_gp_hover];
+                ConnectionInfo ci = m_dic_gp_info[gp];
                 return (ci.Output, ci.Input);
             }
             return (null, null);
@@ -1491,6 +1499,8 @@ namespace ST.Library.UI.NodeEditor
             g.SmoothingMode = SmoothingMode.HighQuality;
             m_p_line_hover.Color = Color.FromArgb(50, 0, 0, 0);
             var t = typeof(object);
+            float hitInflate = Math.Max(m_p_line_hover.Width * 0.5f, 2f);
+            RectangleF visibleCanvas = this.GetVisibleCanvasBounds(50f);
             foreach (STNode n in this._Nodes)
             {
                 var allOutputOptions = n.OutputOptions.Cast<STNodeOption>()
@@ -1522,23 +1532,50 @@ namespace ST.Library.UI.NodeEditor
                         // Check if this is a self-connection (both options belong to the same node)
                         bool isSelfConnection = op.Owner == v.Owner;
                         float curvature = isSelfConnection ? _Curvature * _SelfConnectionCurvatureMultiplier : _Curvature;
+
+                        PointF p0, p1, p2, p3;
+                        if (isVertical)
+                            GetVerticalBezierPoints(startPt, endPt, curvature, isTop, out p0, out p1, out p2, out p3);
+                        else
+                            GetHorizontalBezierPoints(startPt, endPt, curvature, out p0, out p1, out p2, out p3);
+
+                        RectangleF drawBounds = BoundsFromControlPoints(p0, p1, p2, p3, 0f);
+                        bool onScreen = drawBounds.IntersectsWith(visibleCanvas);
                         
                         if (isVertical)
                         {
-                            DrawVerticalBezier(g, m_p_line_hover, startPt, endPt, curvature, isTop);
-                            DrawVerticalBezier(g, m_p_line, startPt, endPt, curvature, isTop);
+                            if (onScreen)
+                            {
+                                DrawVerticalBezier(g, m_p_line_hover, startPt, endPt, curvature, isTop);
+                                DrawVerticalBezier(g, m_p_line, startPt, endPt, curvature, isTop);
+                            }
                             if (m_is_buildpath)
                             {
-                                m_dic_gp_info.Add(CreateVerticalBezierPath(startPt, endPt, curvature, isTop), new ConnectionInfo() { Output = op, Input = v });
+                                ConnectionInfo ci = new ConnectionInfo() {
+                                    Output = op,
+                                    Input = v,
+                                    P0 = p0, P1 = p1, P2 = p2, P3 = p3,
+                                    HitBounds = BoundsFromControlPoints(p0, p1, p2, p3, hitInflate)
+                                };
+                                m_dic_gp_info.Add(CreateBezierPath(p0, p1, p2, p3), ci);
                             }
                         }
                         else
                         {
-                            DrawHorizontalBezier(g, m_p_line_hover, startPt, endPt, curvature);
-                            DrawHorizontalBezier(g, m_p_line, startPt, endPt, curvature);
+                            if (onScreen)
+                            {
+                                DrawHorizontalBezier(g, m_p_line_hover, startPt, endPt, curvature);
+                                DrawHorizontalBezier(g, m_p_line, startPt, endPt, curvature);
+                            }
                             if (m_is_buildpath)
                             {
-                                m_dic_gp_info.Add(CreateHorizontalBezierPath(startPt, endPt, curvature), new ConnectionInfo() { Output = op, Input = v });
+                                ConnectionInfo ci = new ConnectionInfo() {
+                                    Output = op,
+                                    Input = v,
+                                    P0 = p0, P1 = p1, P2 = p2, P3 = p3,
+                                    HitBounds = BoundsFromControlPoints(p0, p1, p2, p3, hitInflate)
+                                };
+                                m_dic_gp_info.Add(CreateBezierPath(p0, p1, p2, p3), ci);
                             }
                         }
                     }
@@ -2038,34 +2075,118 @@ namespace ST.Library.UI.NodeEditor
                 ptEnd.X, ptEnd.Y);
         }
 
-        private GraphicsPath CreateHorizontalBezierPath(PointF ptStart, PointF ptEnd, float f) {
-            GraphicsPath gp = new GraphicsPath();
+        private static void GetHorizontalBezierPoints(PointF ptStart, PointF ptEnd, float f, out PointF p0, out PointF p1, out PointF p2, out PointF p3) {
             float n = (Math.Abs(ptStart.X - ptEnd.X) * f);
             if (f != 0 && n < 30) n = 30;
-            gp.AddBezier(
-                ptStart.X, ptStart.Y,
-                ptStart.X + n, ptStart.Y,
-                ptEnd.X - n, ptEnd.Y,
-                ptEnd.X, ptEnd.Y
-                );
+            p0 = ptStart;
+            p1 = new PointF(ptStart.X + n, ptStart.Y);
+            p2 = new PointF(ptEnd.X - n, ptEnd.Y);
+            p3 = ptEnd;
+        }
+
+        private static void GetVerticalBezierPoints(PointF ptStart, PointF ptEnd, float f, bool startPinIsOnTop, out PointF p0, out PointF p1, out PointF p2, out PointF p3) {
+            float n = (Math.Abs(ptStart.Y - ptEnd.Y) * f);
+            if (f != 0 && n < 30) n = 30;
+            float startOffset = startPinIsOnTop ? -n : n;
+            float endOffset = startPinIsOnTop ? n : -n;
+            p0 = ptStart;
+            p1 = new PointF(ptStart.X, ptStart.Y + startOffset);
+            p2 = new PointF(ptEnd.X, ptEnd.Y + endOffset);
+            p3 = ptEnd;
+        }
+
+        private static RectangleF BoundsFromControlPoints(PointF p0, PointF p1, PointF p2, PointF p3, float inflate) {
+            float minX = Math.Min(Math.Min(p0.X, p1.X), Math.Min(p2.X, p3.X));
+            float maxX = Math.Max(Math.Max(p0.X, p1.X), Math.Max(p2.X, p3.X));
+            float minY = Math.Min(Math.Min(p0.Y, p1.Y), Math.Min(p2.Y, p3.Y));
+            float maxY = Math.Max(Math.Max(p0.Y, p1.Y), Math.Max(p2.Y, p3.Y));
+            RectangleF r = RectangleF.FromLTRB(minX, minY, maxX, maxY);
+            if (inflate != 0f) r.Inflate(inflate, inflate);
+            return r;
+        }
+
+        private static GraphicsPath CreateBezierPath(PointF p0, PointF p1, PointF p2, PointF p3) {
+            GraphicsPath gp = new GraphicsPath();
+            gp.AddBezier(p0, p1, p2, p3);
             return gp;
         }
 
-        private GraphicsPath CreateVerticalBezierPath(PointF ptStart, PointF ptEnd, float f, bool startPinIsOnTop) {
-            GraphicsPath gp = new GraphicsPath();
-            float n = (Math.Abs(ptStart.Y - ptEnd.Y) * f);
-            if (f != 0 && n < 30) n = 30;
+        private RectangleF GetVisibleCanvasBounds(float pad) {
+            float x = -this._CanvasOffsetX / this._CanvasScale;
+            float y = -this._CanvasOffsetY / this._CanvasScale;
+            float w = this.Width / this._CanvasScale;
+            float h = this.Height / this._CanvasScale;
+            return new RectangleF(x - pad, y - pad, w + pad * 2f, h + pad * 2f);
+        }
 
-            float startOffset = startPinIsOnTop ? -n : n;
-            float endOffset = startPinIsOnTop ? n : -n;
+        /// <summary>
+        /// Fast link hover: AABB reject, then sampled cubic-bezier distance (avoids GDI+ IsOutlineVisible).
+        /// </summary>
+        private GraphicsPath FindConnectionPathAt(PointF pt) {
+            if (m_dic_gp_info.Count == 0) return null;
 
-            gp.AddBezier(
-                ptStart.X, ptStart.Y,
-                ptStart.X, ptStart.Y + startOffset,
-                ptEnd.X, ptEnd.Y + endOffset,
-                ptEnd.X, ptEnd.Y
-                );
-            return gp;
+            float threshold = Math.Max(m_p_line_hover.Width * 0.5f, 2f);
+            float thresholdSq = threshold * threshold;
+
+            foreach (var v in m_dic_gp_info) {
+                if (!v.Value.HitBounds.Contains(pt)) continue;
+                if (DistanceSquaredToCubicBezier(pt, v.Value.P0, v.Value.P1, v.Value.P2, v.Value.P3) <= thresholdSq)
+                    return v.Key;
+            }
+            return null;
+        }
+
+        private static float DistanceSquaredToCubicBezier(PointF pt, PointF p0, PointF p1, PointF p2, PointF p3) {
+            float approxLen =
+                Hypot(p1.X - p0.X, p1.Y - p0.Y) +
+                Hypot(p2.X - p1.X, p2.Y - p1.Y) +
+                Hypot(p3.X - p2.X, p3.Y - p2.Y);
+            int samples = (int)(approxLen / 25f);
+            if (samples < 8) samples = 8;
+            else if (samples > 48) samples = 48;
+
+            float minDistSq = float.MaxValue;
+            PointF prev = p0;
+            for (int i = 1; i <= samples; i++) {
+                float t = i / (float)samples;
+                PointF curr = EvalCubicBezier(p0, p1, p2, p3, t);
+                float dsq = DistanceSquaredToSegment(pt, prev, curr);
+                if (dsq < minDistSq) minDistSq = dsq;
+                prev = curr;
+            }
+            return minDistSq;
+        }
+
+        private static PointF EvalCubicBezier(PointF p0, PointF p1, PointF p2, PointF p3, float t) {
+            float u = 1f - t;
+            float uu = u * u;
+            float tt = t * t;
+            float uuu = uu * u;
+            float ttt = tt * t;
+            float x = uuu * p0.X + 3f * uu * t * p1.X + 3f * u * tt * p2.X + ttt * p3.X;
+            float y = uuu * p0.Y + 3f * uu * t * p1.Y + 3f * u * tt * p2.Y + ttt * p3.Y;
+            return new PointF(x, y);
+        }
+
+        private static float DistanceSquaredToSegment(PointF p, PointF a, PointF b) {
+            float dx = b.X - a.X;
+            float dy = b.Y - a.Y;
+            float lenSq = dx * dx + dy * dy;
+            if (lenSq < 1e-6f) {
+                float ox = p.X - a.X;
+                float oy = p.Y - a.Y;
+                return ox * ox + oy * oy;
+            }
+            float t = ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / lenSq;
+            if (t < 0f) t = 0f;
+            else if (t > 1f) t = 1f;
+            float px = a.X + t * dx - p.X;
+            float py = a.Y + t * dy - p.Y;
+            return px * px + py * py;
+        }
+
+        private static float Hypot(float x, float y) {
+            return (float)Math.Sqrt(x * x + y * y);
         }
 
 
