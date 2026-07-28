@@ -552,9 +552,11 @@ namespace ST.Library.UI.NodeEditor
         private Pen m_pen_border_selected;
         private Pen m_pen_border_active;
 
-        //Used for the animation effect when the mouse scrolls or the touchpad moves the canvas. This value is the real coordinate address that needs to be moved to. View->MoveCanvasThread()
+        //Used for the animation effect when the mouse scrolls or the touchpad moves the canvas. This value is the real coordinate address that needs to be moved to.
         private float m_real_canvas_x;
         private float m_real_canvas_y;
+        // UI-thread timer so canvas lerps do not block input and can be retargeted mid-move.
+        private System.Windows.Forms.Timer m_canvas_move_timer;
         //Used to save the initial coordinates of the selected node when the mouse is clicked
         private Dictionary<STNode, Point> m_dic_pt_selected = new Dictionary<STNode, Point>();
         //Used for magnet effect When moving nodes, the statistics of non-selected nodes need to participate in the coordinates of the magnet effect. View->BuildMagnetLocation()
@@ -752,12 +754,23 @@ namespace ST.Library.UI.NodeEditor
             m_pen_border_selected = new Pen(new SolidBrush(Color.FromArgb(150, this._BorderSelectedColor)), 2.0f);
 
             base.OnCreateControl();
-            new Thread(this.MoveCanvasThread) { IsBackground = true }.Start();
+            m_canvas_move_timer = new System.Windows.Forms.Timer { Interval = 16 };
+            m_canvas_move_timer.Tick += this.CanvasMoveTimer_Tick;
             new Thread(this.ShowAlertThread) { IsBackground = true }.Start();
             m_sf = new StringFormat();
             m_sf.Alignment = StringAlignment.Near;
             m_sf.FormatFlags = StringFormatFlags.NoWrap;
             m_sf.SetTabStops(0, new float[] { 40 });
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e) {
+            if (m_canvas_move_timer != null) {
+                m_canvas_move_timer.Stop();
+                m_canvas_move_timer.Tick -= this.CanvasMoveTimer_Tick;
+                m_canvas_move_timer.Dispose();
+                m_canvas_move_timer = null;
+            }
+            base.OnHandleDestroyed(e);
         }
 
         protected override void WndProc(ref Message m) {
@@ -1849,44 +1862,46 @@ namespace ST.Library.UI.NodeEditor
 
         #region private -----------------------------------------------------------------------------------------------------
 
-        private void MoveCanvasThread() {
-            bool bRedraw;
-            while (true) {
-                bRedraw = false;
-                if (m_real_canvas_x != this._CanvasOffsetX) {
-                    float nx = m_real_canvas_x - this._CanvasOffsetX;
-                    float n = Math.Abs(nx) / 10;
-                    float nTemp = Math.Abs(nx);
-                    if (nTemp <= 4) n = 1;
-                    else if (nTemp <= 12) n = 2;
-                    else if (nTemp <= 30) n = 3;
-                    if (nTemp < 1) this._CanvasOffsetX = m_real_canvas_x;
-                    else
-                        this._CanvasOffsetX += nx > 0 ? n : -n;
-                    bRedraw = true;
-                }
-                if (m_real_canvas_y != this._CanvasOffsetY) {
-                    float ny = m_real_canvas_y - this._CanvasOffsetY;
-                    float n = Math.Abs(ny) / 10;
-                    float nTemp = Math.Abs(ny);
-                    if (nTemp <= 4) n = 1;
-                    else if (nTemp <= 12) n = 2;
-                    else if (nTemp <= 30) n = 3;
-                    if (nTemp < 1)
-                        this._CanvasOffsetY = m_real_canvas_y;
-                    else
-                        this._CanvasOffsetY += ny > 0 ? n : -n;
-                    bRedraw = true;
-                }
-                if (bRedraw) {
-                    m_pt_canvas_old.X = this._CanvasOffsetX;
-                    m_pt_canvas_old.Y = this._CanvasOffsetY;
-                    this.Invalidate();
-                    Thread.Sleep(30);
-                } else {
-                    Thread.Sleep(100);
-                }
+        private void CanvasMoveTimer_Tick(object sender, EventArgs e) {
+            bool bRedraw = false;
+            if (m_real_canvas_x != this._CanvasOffsetX) {
+                float nx = m_real_canvas_x - this._CanvasOffsetX;
+                float n = Math.Abs(nx) / 10;
+                float nTemp = Math.Abs(nx);
+                if (nTemp <= 4) n = 1;
+                else if (nTemp <= 12) n = 2;
+                else if (nTemp <= 30) n = 3;
+                if (nTemp < 1) this._CanvasOffsetX = m_real_canvas_x;
+                else
+                    this._CanvasOffsetX += nx > 0 ? n : -n;
+                bRedraw = true;
             }
+            if (m_real_canvas_y != this._CanvasOffsetY) {
+                float ny = m_real_canvas_y - this._CanvasOffsetY;
+                float n = Math.Abs(ny) / 10;
+                float nTemp = Math.Abs(ny);
+                if (nTemp <= 4) n = 1;
+                else if (nTemp <= 12) n = 2;
+                else if (nTemp <= 30) n = 3;
+                if (nTemp < 1)
+                    this._CanvasOffsetY = m_real_canvas_y;
+                else
+                    this._CanvasOffsetY += ny > 0 ? n : -n;
+                bRedraw = true;
+            }
+            if (bRedraw) {
+                m_pt_canvas_old.X = this._CanvasOffsetX;
+                m_pt_canvas_old.Y = this._CanvasOffsetY;
+                this.Invalidate();
+            } else if (m_canvas_move_timer != null) {
+                m_canvas_move_timer.Stop();
+            }
+        }
+
+        private void StartCanvasMoveAnimation() {
+            if (m_canvas_move_timer == null || m_canvas_move_timer.Enabled)
+                return;
+            m_canvas_move_timer.Start();
         }
 
         private void ShowAlertThread() {
@@ -2394,11 +2409,15 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="bAnimation">Whether to start the animation effect during the movement</param>
         public void MoveCanvas(float x, float y, bool bAnimation) {
             if (bAnimation) {
+                // Retarget mid-flight: only the destination changes; the timer keeps lerping.
                 m_real_canvas_x = x;
                 m_real_canvas_y = y;
+                this.StartCanvasMoveAnimation();
             } else {
                 m_real_canvas_x = this._CanvasOffsetX = x;
                 m_real_canvas_y = this._CanvasOffsetY = y;
+                if (m_canvas_move_timer != null)
+                    m_canvas_move_timer.Stop();
                 this.Invalidate(); // Redraw immediately if not animating
             }
             this.OnCanvasMoved(EventArgs.Empty);
