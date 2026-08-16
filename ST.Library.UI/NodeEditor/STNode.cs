@@ -588,6 +588,34 @@ namespace ST.Library.UI.NodeEditor
         private bool _shouldRenderOptions = true;
         public bool RenderingOptions => _shouldRenderOptions;
 
+        private bool _ShowMultiNodeMarker = false;
+        /// <summary>
+        /// OpenCAGE: when true, an asterisk marker is drawn on the title bar indicating the entity
+        /// is represented by more than one node across the composite's flowgraph pages.
+        /// </summary>
+        public bool ShowMultiNodeMarker {
+            get { return _ShowMultiNodeMarker; }
+            set {
+                if (_ShowMultiNodeMarker == value) return;
+                _ShowMultiNodeMarker = value;
+                this.Invalidate();
+            }
+        }
+
+        private bool _ShowProxyRefMarker = false;
+        /// <summary>
+        /// OpenCAGE: when true, a circled "P" marker is drawn on the title bar indicating the entity
+        /// is referenced by a proxy elsewhere in the level.
+        /// </summary>
+        public bool ShowProxyRefMarker {
+            get { return _ShowProxyRefMarker; }
+            set {
+                if (_ShowProxyRefMarker == value) return;
+                _ShowProxyRefMarker = value;
+                this.Invalidate();
+            }
+        }
+
         private bool _LetGetOptions = false;
         /// <summary>
         /// Get or set whether to allow external access to STNodeOption.
@@ -988,10 +1016,76 @@ namespace ST.Library.UI.NodeEditor
                 g.FillRectangle(brush, this.Right - 8, n + 6, 2, 4);
             }
 
+            // OpenCAGE: entity status markers in the title bar (white circles, vertically centred,
+            // right-aligned). Drawn right-to-left: [P] [*] <edge>.
+            int markerSpace = 0;
+            if (this._ShowMultiNodeMarker || this._ShowProxyRefMarker) {
+                const int markerSize = 13;    // circle diameter
+                const int markerGap = 4;      // gap between markers / node edge
+
+                System.Drawing.Drawing2D.SmoothingMode oldSmoothing = g.SmoothingMode;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+
+                int markerRight = this.Right - markerGap;
+                if (this._LockLocation) markerRight -= 12;
+                float markerCenterY = titleRect.Y + (titleRect.Height / 2f);
+
+                // Asterisk in a white circle: this entity has multiple nodes across the composite's pages.
+                if (this._ShowMultiNodeMarker) {
+                    RectangleF circleRect = new RectangleF(markerRight - markerSize, markerCenterY - (markerSize / 2f), markerSize, markerSize);
+                    brush.Color = Color.White;
+                    g.FillEllipse(brush, circleRect);
+
+                    // Draw the asterisk geometrically (6 spokes) so it centres perfectly in the circle.
+                    float cx = circleRect.X + (circleRect.Width / 2f);
+                    float cy = circleRect.Y + (circleRect.Height / 2f);
+                    const float spokeRadius = 3.5f;
+                    Color oldPenColor = dt.Pen.Color;
+                    float oldPenWidth = dt.Pen.Width;
+                    dt.Pen.Color = Color.FromArgb(0, 120, 215); // blue
+                    dt.Pen.Width = 1.6f;
+                    for (int spoke = 0; spoke < 3; spoke++) {
+                        double angle = (Math.PI / 2.0) + (spoke * Math.PI / 3.0); // 90, 150, 210 degrees
+                        float dx = (float)Math.Cos(angle) * spokeRadius;
+                        float dy = (float)Math.Sin(angle) * spokeRadius;
+                        g.DrawLine(dt.Pen, cx - dx, cy - dy, cx + dx, cy + dy);
+                    }
+                    dt.Pen.Color = oldPenColor;
+                    dt.Pen.Width = oldPenWidth;
+
+                    markerRight -= markerSize + markerGap;
+                    markerSpace += markerSize + markerGap;
+                }
+
+                // Red P in a white circle: this entity is referenced by a proxy elsewhere.
+                if (this._ShowProxyRefMarker) {
+                    RectangleF circleRect = new RectangleF(markerRight - markerSize, markerCenterY - (markerSize / 2f), markerSize, markerSize);
+                    brush.Color = Color.White;
+                    g.FillEllipse(brush, circleRect);
+
+                    brush.Color = Color.FromArgb(200, 30, 45); // red
+                    using (Font markerFont = new Font("Arial", 7.5f, FontStyle.Bold))
+                    using (StringFormat markerFormat = new StringFormat() {
+                        Alignment = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Center,
+                    }) {
+                        // Nudge up fractionally: cap-height glyphs centre slightly low otherwise.
+                        RectangleF textRectP = circleRect;
+                        textRectP.Y -= 0.5f;
+                        g.DrawString("P", markerFont, brush, textRectP, markerFormat);
+                    }
+
+                    markerRight -= markerSize + markerGap;
+                    markerSpace += markerSize + markerGap;
+                }
+
+                g.SmoothingMode = oldSmoothing;
+            }
+
             // Create a padded rectangle for the text to achieve left padding and clipping.
             Rectangle textRect = titleRect;
             textRect.X += 10; // 10 pixels of left padding
-            textRect.Width -= 15; // Reduce width to account for padding
+            textRect.Width -= 15 + markerSpace; // Reduce width to account for padding and status markers
 
             // Font scaling logic based on zoom
             Font fontToUse = this._FontBold;
