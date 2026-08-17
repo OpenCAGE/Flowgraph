@@ -761,6 +761,22 @@ namespace ST.Library.UI.NodeEditor
                     return this.InputOptions[i];
             return null;
         }
+        /// <summary>
+        /// Collect the ShortGuids of options that currently have data/logic fed INTO them: the left
+        /// (method) pins, plus the top pins that point downward into the node (data parameter pins -
+        /// upward-pointing top pins are outputs, so they're excluded).
+        /// </summary>
+        public List<ShortGuid> GetConnectedInputOptionIds()
+        {
+            List<ShortGuid> ids = new List<ShortGuid>();
+            for (int i = 0; i < this.InputOptions.Count; i++)
+                if (this.InputOptions[i].ConnectionCount > 0)
+                    ids.Add(this.InputOptions[i].ShortGUID);
+            for (int i = 0; i < this.TopOptions.Count; i++)
+                if (this.TopOptions[i].ConnectionCount > 0 && this.TopOptions[i].Style != PinStyle.ArrowUp)
+                    ids.Add(this.TopOptions[i].ShortGUID);
+            return ids;
+        }
         public STNodeOption GetOutputOption(ShortGuid option)
         {
             for (int i = 0; i < this.OutputOptions.Count; i++)
