@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -425,6 +425,21 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        private Color _LocationSelectedColor = Color.FromArgb(255, 160, 32);
+        /// <summary>
+        /// Gets or sets the colour of the edge marker drawn for selected nodes that are off screen.
+        /// These are drawn as arrows pointing at the node rather than as plain dots, so the ones you
+        /// are looking for stand out from every other off-screen node.
+        /// </summary>
+        [Description("Gets or sets the colour of the edge marker drawn for off-screen selected nodes.")]
+        public Color LocationSelectedColor {
+            get { return _LocationSelectedColor; }
+            set {
+                _LocationSelectedColor = value;
+                this.Invalidate();
+            }
+        }
+
         private Color _UnknownTypeColor = Color.Gray;
         /// <summary>
         /// Gets or sets the color that should be used in the canvas when the Option data type in Node cannot be determined.
@@ -589,6 +604,8 @@ namespace ST.Library.UI.NodeEditor
         private Dictionary<GraphicsPath, ConnectionInfo> m_dic_gp_info = new Dictionary<GraphicsPath, ConnectionInfo>();
         //Save the position of the Node beyond the visual area
         private List<Point> m_lst_node_out = new List<Point>();
+        //Off-screen nodes that are selected, tracked apart so they can be drawn as arrows on top
+        private List<Point> m_lst_node_out_selected = new List<Point>();
         //The Node type loaded in the current editor is used to load nodes from files or data.
         private Dictionary<string, Type> m_dic_type = new Dictionary<string, Type>();
 
@@ -1115,7 +1132,7 @@ namespace ST.Library.UI.NodeEditor
         public (STNodeOption, STNodeOption) GetHoveredLink() //Output, Input
         {
             // Live hit-test so right-click menus stay accurate when hover tracking lagged.
-            // Skip when over a node — same priority as OnMouseMove.
+            // Skip when over a node â€” same priority as OnMouseMove.
             if (this.FindNodeFromPoint(m_pt_in_canvas).Node != null)
                 return (null, null);
 
@@ -1446,12 +1463,15 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="rect">Viewable canvas area size</param>
         protected virtual void OnDrawNode(DrawingTools dt, Rectangle rect) {
             m_lst_node_out.Clear(); //Clear the coordinates of the Node beyond the visual area
+            m_lst_node_out_selected.Clear();
             foreach (STNode n in this._Nodes) {
                 if (this._ShowBorder) this.OnDrawNodeBorder(dt, n);
                 n.OnDrawNode(dt);                                       //Call Node to draw the main part of itself
                 if (!string.IsNullOrEmpty(n.Mark)) n.OnDrawMark(dt);    //Call Node to draw the Mark area by itself
                 if (!rect.IntersectsWith(n.Rectangle)) {
                     m_lst_node_out.Add(n.Location);                     //Determine whether this Node exceeds the visual area
+                    //Selecting an entity selects every node for it, so this marks the ones being hunted for
+                    if (n.IsSelected) m_lst_node_out_selected.Add(n.Location);
                 }
             }
         }
@@ -1733,6 +1753,66 @@ namespace ST.Library.UI.NodeEditor
                 if (pt.Y > sz.Height) pt.Y = sz.Height - 4;
                 g.FillRectangle(brush, pt.X, pt.Y, 4, 4);
             }
+
+            this.OnDrawSelectedNodeOutLocation(dt, sz);
+        }
+
+        /// <summary>
+        /// Draw an arrow at the canvas edge for every selected node that is off screen, pointing the
+        /// way you would have to pan to reach it.
+        ///
+        /// The plain dots mark every off-screen node equally, which is no help when hunting for the
+        /// several nodes that share the selected entity - these are drawn over the top of them in the
+        /// highlight colour so the ones that matter can be picked out at a glance.
+        /// </summary>
+        protected virtual void OnDrawSelectedNodeOutLocation(DrawingTools dt, Size sz) {
+            if (m_lst_node_out_selected.Count == 0) return;
+
+            const float tipLength = 11f;    //How far the arrow reaches in from the edge
+            const float halfWidth = 6f;
+            const float edgeInset = 3f;     //Sits the tip within the edge band rather than half off it
+
+            Graphics g = dt.Graphics;
+            SolidBrush brush = dt.SolidBrush;
+            brush.Color = this._LocationSelectedColor;
+
+            SmoothingMode previousMode = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.HighQuality;
+
+            foreach (var v in m_lst_node_out_selected) {
+                Point target = this.CanvasToControl(v);
+
+                //Pin the arrow to the edge the node lies beyond
+                float x = target.X, y = target.Y;
+                if (x < edgeInset) x = edgeInset;
+                if (y < edgeInset) y = edgeInset;
+                if (x > sz.Width - edgeInset) x = sz.Width - edgeInset;
+                if (y > sz.Height - edgeInset) y = sz.Height - edgeInset;
+
+                //Point it from the edge back out towards where the node actually is, so a node off a
+                //corner gets a diagonal arrow rather than being forced to one side
+                float dx = target.X - x;
+                float dy = target.Y - y;
+                float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
+                if (length < 0.0001f) continue; //On screen after all - nothing to point at
+                dx /= length;
+                dy /= length;
+
+                //Tip sits on the edge with the body inside the canvas, so none of it is clipped away
+                PointF tip = new PointF(x, y);
+                PointF tail = new PointF(x - (dx * tipLength), y - (dy * tipLength));
+                PointF perpendicular = new PointF(-dy * halfWidth, dx * halfWidth);
+                PointF[] arrow = new PointF[]
+                {
+                    tip,
+                    new PointF(tail.X + perpendicular.X, tail.Y + perpendicular.Y),
+                    new PointF(tail.X - perpendicular.X, tail.Y - perpendicular.Y),
+                };
+
+                g.FillPolygon(brush, arrow);
+            }
+
+            g.SmoothingMode = previousMode;
         }
         /// <summary>
         /// Drawing prompt message.
@@ -2864,3 +2944,5 @@ namespace ST.Library.UI.NodeEditor
         #endregion public
     }
 }
+
+
