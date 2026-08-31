@@ -738,6 +738,25 @@ namespace ST.Library.UI.NodeEditor
             return newOp;
         }
 
+        /// <summary>
+        /// Reorder the left and right pins into the given row sequences. Both lists are aligned by
+        /// index in the layout, and an STNodeOption.Empty entry leaves that row blank on its side -
+        /// which is how a pin pair (a method and its relay) is drawn on one line while an unpaired
+        /// pin keeps the opposite side empty. Membership cannot change here, only order and spacing,
+        /// and connections are preserved.
+        /// </summary>
+        public void ArrangePinRows(IList<STNodeOption> lefts, IList<STNodeOption> rights)
+        {
+            this._InputOptions.SetOrder(lefts);
+            this._OutputOptions.SetOrder(rights);
+
+            if (this._Owner == null) return;
+            this.SetOptionsLocation();
+            this.BuildSize(true, true, false);
+            this._Owner.BuildLinePath();
+            this.Invalidate();
+        }
+
         public STNodeOption GetOption(ShortGuid option)
         {
             for (int i = 0; i < this.InputOptions.Count; i++)

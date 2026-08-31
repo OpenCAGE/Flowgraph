@@ -141,6 +141,32 @@ namespace ST.Library.UI.NodeEditor
             set { throw new InvalidOperationException("Reassignment of elements not allowed."); }
         }
 
+        /// <summary>
+        /// Rearrange the collection in place. The new order must contain every option currently held
+        /// (each exactly once); STNodeOption.Empty entries may be added or dropped freely, and act as
+        /// blank rows in the layout. Owners are left untouched, so - unlike Clear and re-Add, whose
+        /// Owner churn disconnects everything - existing connections survive.
+        /// </summary>
+        internal void SetOrder(IList<STNodeOption> options) {
+            if (options == null) throw new ArgumentNullException("Order cannot be empty.");
+
+            var seen = new HashSet<STNodeOption>();
+            foreach (STNodeOption op in options) {
+                if (op == null) throw new ArgumentNullException("Order cannot contain null.");
+                if (op == STNodeOption.Empty) continue;
+                if (this.IndexOf(op) == -1) throw new ArgumentException("SetOrder may only rearrange options already in the collection.");
+                if (!seen.Add(op)) throw new ArgumentException("SetOrder was given the same option twice.");
+            }
+            for (int i = 0; i < this._Count; i++)
+                if (m_options[i] != STNodeOption.Empty && !seen.Contains(m_options[i]))
+                    throw new ArgumentException("SetOrder must keep every option the collection holds.");
+
+            m_options = new STNodeOption[Math.Max(4, options.Count)];
+            for (int i = 0; i < options.Count; i++) m_options[i] = options[i];
+            this._Count = options.Count;
+            this.Invalidate();
+        }
+
         public void CopyTo(Array array, int index) {
             if (array == null)
                 throw new ArgumentNullException("Array cannot be empty.");
