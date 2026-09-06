@@ -940,10 +940,12 @@ namespace ST.Library.UI.NodeEditor
                         // Ctrl+click for multi-selection - use visual selection
                         if (nfi.Node.IsSelected)
                         {
+                            // Ctrl-clicking one that is already selected takes it back out again
                             if (nfi.Node == this._ActiveNode)
                             {
                                 this.SetActiveNode(null);
                             }
+                            this.SetVisualSelection(nfi.Node, false);
                         }
                         else
                         {
@@ -1207,31 +1209,10 @@ namespace ST.Library.UI.NodeEditor
                 this.OnSelectedChanged(EventArgs.Empty);
             }
             
-            // If this was a drag operation, ensure nodes return to their proper visual state
-            // Only clear selections for node dragging, not for rectangle selection
-            if (wasDragOperation && m_ca == CanvasAction.MoveNode) {
-                // After dragging nodes, clear ALL selections including the active node
-                // This ensures that dragged nodes don't retain any selection outline
-                var nodesToDeselect = new List<STNode>();
-                foreach (var node in m_hs_node_selected.ToArray()) {
-                    nodesToDeselect.Add(node);
-                }
-                
-                // Deselect all nodes that were dragged
-                foreach (var node in nodesToDeselect) {
-                    this.SetVisualSelection(node, false);
-                }
-                
-                // Clear the active node as well to ensure no outline is shown
-                if (this._ActiveNode != null) {
-                    this._ActiveNode.IsActive = false;
-                    this._ActiveNode = null;
-                }
-                
-                // Force a redraw to ensure visual state is correct
-                this.Invalidate();
-            }
-            
+            // Nodes that were dragged stay selected: moving a selection is not a reason to lose it,
+            // and dropping it here meant a Delete after nudging nodes only caught the one under the
+            // cursor. The transient drag outline is what goes, which is the set cleared just below.
+
             // Clear the dragged nodes set and redraw to show proper selection outlines
             if (m_nodes_being_dragged.Count > 0) {
                 m_nodes_being_dragged.Clear();
