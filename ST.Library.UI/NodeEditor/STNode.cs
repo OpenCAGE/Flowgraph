@@ -616,6 +616,28 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        // OpenCAGE: the title-bar markers' text is drawn every paint; the font and format are shared
+        private static readonly Font s_markerFontP = new Font("Arial", 7.5f, FontStyle.Bold);
+        private static readonly Font s_markerFontBang = new Font("Arial", 8f, FontStyle.Bold);
+        private static readonly StringFormat s_markerFormat = new StringFormat() {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center,
+        };
+
+        private bool _ShowDeadMarker = false;
+        /// <summary>
+        /// OpenCAGE: when true, a circled "!" marker is drawn on the title bar indicating the entity
+        /// is a dead proxy - one whose target no longer exists in the level.
+        /// </summary>
+        public bool ShowDeadMarker {
+            get { return _ShowDeadMarker; }
+            set {
+                if (_ShowDeadMarker == value) return;
+                _ShowDeadMarker = value;
+                this.Invalidate();
+            }
+        }
+
         private bool _LetGetOptions = false;
         /// <summary>
         /// Get or set whether to allow external access to STNodeOption.
@@ -1052,9 +1074,9 @@ namespace ST.Library.UI.NodeEditor
             }
 
             // OpenCAGE: entity status markers in the title bar (white circles, vertically centred,
-            // right-aligned). Drawn right-to-left: [P] [*] <edge>.
+            // right-aligned). Drawn right-to-left: [P] [*] [!] <edge>.
             int markerSpace = 0;
-            if (this._ShowMultiNodeMarker || this._ShowProxyRefMarker) {
+            if (this._ShowMultiNodeMarker || this._ShowProxyRefMarker || this._ShowDeadMarker) {
                 const int markerSize = 13;    // circle diameter
                 const int markerGap = 4;      // gap between markers / node edge
 
@@ -1064,6 +1086,21 @@ namespace ST.Library.UI.NodeEditor
                 int markerRight = this.Right - markerGap;
                 if (this._LockLocation) markerRight -= 12;
                 float markerCenterY = titleRect.Y + (titleRect.Height / 2f);
+
+                // Red ! in a white circle: this is a dead proxy - its target is not in the level.
+                if (this._ShowDeadMarker) {
+                    RectangleF circleRect = new RectangleF(markerRight - markerSize, markerCenterY - (markerSize / 2f), markerSize, markerSize);
+                    brush.Color = Color.White;
+                    g.FillEllipse(brush, circleRect);
+
+                    brush.Color = Color.FromArgb(200, 30, 45); // red
+                    RectangleF textRectBang = circleRect;
+                    textRectBang.Y -= 0.5f;
+                    g.DrawString("!", s_markerFontBang, brush, textRectBang, s_markerFormat);
+
+                    markerRight -= markerSize + markerGap;
+                    markerSpace += markerSize + markerGap;
+                }
 
                 // Asterisk in a white circle: this entity has multiple nodes across the composite's pages.
                 if (this._ShowMultiNodeMarker) {
@@ -1099,16 +1136,10 @@ namespace ST.Library.UI.NodeEditor
                     g.FillEllipse(brush, circleRect);
 
                     brush.Color = Color.FromArgb(200, 30, 45); // red
-                    using (Font markerFont = new Font("Arial", 7.5f, FontStyle.Bold))
-                    using (StringFormat markerFormat = new StringFormat() {
-                        Alignment = StringAlignment.Center,
-                        LineAlignment = StringAlignment.Center,
-                    }) {
-                        // Nudge up fractionally: cap-height glyphs centre slightly low otherwise.
-                        RectangleF textRectP = circleRect;
-                        textRectP.Y -= 0.5f;
-                        g.DrawString("P", markerFont, brush, textRectP, markerFormat);
-                    }
+                    // Nudge up fractionally: cap-height glyphs centre slightly low otherwise.
+                    RectangleF textRectP = circleRect;
+                    textRectP.Y -= 0.5f;
+                    g.DrawString("P", s_markerFontP, brush, textRectP, s_markerFormat);
 
                     markerRight -= markerSize + markerGap;
                     markerSpace += markerSize + markerGap;

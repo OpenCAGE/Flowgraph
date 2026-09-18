@@ -389,6 +389,14 @@ namespace ST.Library.UI.NodeEditor
             set { _SelectedRectangleColor = value; }
         }
 
+        /// <summary>
+        /// OpenCAGE: an optional say in the colour of each connected line, called with the output
+        /// option the line leaves from and the input option it arrives at. Return Color.Empty to keep
+        /// the line's usual colour (the output option's DotColor, or the type colour).
+        /// </summary>
+        [Browsable(false)]
+        public Func<STNodeOption, STNodeOption, Color> ConnectionColorOverride { get; set; }
+
         private Color _HighLineColor = Color.Cyan;
         /// <summary>
         /// Get or set the color of the highlighted line in the canvas.
@@ -1525,14 +1533,15 @@ namespace ST.Library.UI.NodeEditor
                 {
                     if (op == STNodeOption.Empty) continue;
                     
+                    Color usualColor;
                     if (op.DotColor != Color.Transparent)
-                        m_p_line.Color = op.DotColor;
+                        usualColor = op.DotColor;
                     else
                     {
                         if (op.DataType == t)
-                            m_p_line.Color = this._UnknownTypeColor;
+                            usualColor = this._UnknownTypeColor;
                         else
-                            m_p_line.Color = this._TypeColor.ContainsKey(op.DataType) ? this._TypeColor[op.DataType] : this._UnknownTypeColor;
+                            usualColor = this._TypeColor.ContainsKey(op.DataType) ? this._TypeColor[op.DataType] : this._UnknownTypeColor;
                     }
 
                     bool isVertical = n.TopOptions.Contains(op) || n.BottomOptions.Contains(op);
@@ -1540,6 +1549,14 @@ namespace ST.Library.UI.NodeEditor
 
                     foreach (var v in op.ConnectedOption)
                     {
+                        m_p_line.Color = usualColor;
+                        if (this.ConnectionColorOverride != null)
+                        {
+                            Color overridden = this.ConnectionColorOverride(op, v);
+                            if (!overridden.IsEmpty)
+                                m_p_line.Color = overridden;
+                        }
+
                         PointF startPt = new PointF(op.DotLeft + op.DotSize / 2f, op.DotTop + op.DotSize / 2f);
                         PointF endPt = new PointF(v.DotLeft + v.DotSize / 2f, v.DotTop + v.DotSize / 2f);
                         
