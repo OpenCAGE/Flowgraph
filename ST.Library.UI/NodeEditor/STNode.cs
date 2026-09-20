@@ -147,6 +147,24 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        private static System.Drawing.TextureBrush _nodeTextureBrush;
+        private static System.Drawing.TextureBrush NodeTextureBrush {
+            get {
+                if (_nodeTextureBrush == null) {
+                    Bitmap bmp = new Bitmap(4, 4);
+                    using (Graphics g = Graphics.FromImage(bmp)) {
+                        g.Clear(Color.Transparent);
+                        using (SolidBrush b = new SolidBrush(Color.FromArgb(15, 0, 0, 0))) {
+                            g.FillRectangle(b, 0, 0, 2, 2);
+                            g.FillRectangle(b, 2, 2, 2, 2);
+                        }
+                    }
+                    _nodeTextureBrush = new System.Drawing.TextureBrush(bmp);
+                }
+                return _nodeTextureBrush;
+            }
+        }
+
         private Color _BackColor;
         /// <summary>
         /// Get or set the background color of the current Node.
@@ -1068,15 +1086,22 @@ namespace ST.Library.UI.NodeEditor
                 if (this.Owner?.RoundedCornerRadius == -1)
                 {
                     dt.Graphics.FillRectangle(dt.SolidBrush, bodyRect);
+                    dt.Graphics.FillRectangle(NodeTextureBrush, bodyRect);
                 }
                 else
                 {
-                    if (BottomOptionsCount == 0 && TopOptionsCount == 0)
+                    if (BottomOptionsCount == 0 && TopOptionsCount == 0) {
                         RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0, true);
-                    else if (BottomOptionsCount == 0)
+                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, NodeTextureBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0, true);
+                    }
+                    else if (BottomOptionsCount == 0) {
                         RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0);
-                    else
+                        RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, NodeTextureBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0);
+                    }
+                    else {
                         RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0);
+                        RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, NodeTextureBrush, bodyRect, Owner?.RoundedCornerRadius ?? 0);
+                    }
                 }
             }
 
@@ -1086,8 +1111,10 @@ namespace ST.Library.UI.NodeEditor
                 Rectangle topRect = new Rectangle(this.Left, this.Top, this.Width, top_space);
                 if (this.Owner?.RoundedCornerRadius == -1) {
                     dt.Graphics.FillRectangle(dt.SolidBrush, topRect);
+                    dt.Graphics.FillRectangle(NodeTextureBrush, topRect);
                 } else {
                     RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, dt.SolidBrush, topRect, Owner?.RoundedCornerRadius ?? 0, false);
+                    RoundedCornerUtils.FillRoundedRectangleTop(dt.Graphics, NodeTextureBrush, topRect, Owner?.RoundedCornerRadius ?? 0, false);
                 }
             }
 
@@ -1097,14 +1124,31 @@ namespace ST.Library.UI.NodeEditor
                 Rectangle bottomRect = new Rectangle(this.Left, this.Bottom - bottom_space, this.Width, bottom_space);
                 if (this.Owner?.RoundedCornerRadius == -1) {
                     dt.Graphics.FillRectangle(dt.SolidBrush, bottomRect);
+                    dt.Graphics.FillRectangle(NodeTextureBrush, bottomRect);
                 } else {
                     RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, dt.SolidBrush, bottomRect, Owner?.RoundedCornerRadius ?? 0);
+                    RoundedCornerUtils.FillRoundedRectangleBottom(dt.Graphics, NodeTextureBrush, bottomRect, Owner?.RoundedCornerRadius ?? 0);
                 }
             }
             
             // Now draw the title and other body elements on top of the backgrounds
             this.OnDrawTitle(dt);
             this.OnDrawBody(dt);
+
+            if (this.Entity != null) {
+                if (this.Entity.variant == CATHODE.Scripting.EntityVariant.PROXY || this.Entity.variant == CATHODE.Scripting.EntityVariant.ALIAS) {
+                    Color outlineColor = this.Entity.variant == CATHODE.Scripting.EntityVariant.PROXY ? Color.Purple : Color.DodgerBlue;
+                    using (Pen p = new Pen(outlineColor, 1.5f)) {
+                        p.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+                        Rectangle bounds = new Rectangle(this.Left, this.Top, this.Width, this.Height);
+                        if (this.Owner?.RoundedCornerRadius == -1) {
+                            dt.Graphics.DrawRectangle(p, bounds);
+                        } else {
+                            RoundedCornerUtils.DrawRoundedRectangle(dt.Graphics, p, bounds, this.Owner?.RoundedCornerRadius ?? 0);
+                        }
+                    }
+                }
+            }
         }
         /// <summary>
         /// Draw the Node header part.
@@ -1123,6 +1167,7 @@ namespace ST.Library.UI.NodeEditor
                 brush.Color = this._TitleColor;
                 if (this.Owner?.RoundedCornerRadius == -1) {
                     g.FillRectangle(brush, this.TitleRectangle);
+                    g.FillRectangle(NodeTextureBrush, this.TitleRectangle);
                 } else {
                     bool hasTopBar = (RenderingOptions && this.TopOptions.Count > 0);
                     // Check for any content below the title bar (side pins, controls, or a bottom bar)
@@ -1131,15 +1176,19 @@ namespace ST.Library.UI.NodeEditor
                     if (!hasTopBar && hasBottomContent) {
                         // Case 1: Is the top-most element, but has content below. Round top corners only.
                         RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0, false);
+                        RoundedCornerUtils.FillRoundedRectangleTop(g, NodeTextureBrush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0, false);
                     } else if (!hasTopBar && !hasBottomContent) {
                         // Case 2: Is the only element (or the node is a variable type). Round all corners.
                         RoundedCornerUtils.FillRoundedRectangleTop(g, brush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0, true);
+                        RoundedCornerUtils.FillRoundedRectangleTop(g, NodeTextureBrush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0, true);
                     } else if (hasTopBar && !hasBottomContent) {
                         // Case 3: Sits below a top bar and is the bottom-most element. Round bottom corners only.
                         RoundedCornerUtils.FillRoundedRectangleBottom(g, brush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0);
+                        RoundedCornerUtils.FillRoundedRectangleBottom(g, NodeTextureBrush, this.TitleRectangle, Owner?.RoundedCornerRadius ?? 0);
                     } else { // (hasTopBar && hasBottomContent)
                         // Case 4: Sits between a top bar and content below. No rounding.
                         g.FillRectangle(brush, this.TitleRectangle);
+                        g.FillRectangle(NodeTextureBrush, this.TitleRectangle);
                     }
                 }
             }
@@ -1175,13 +1224,13 @@ namespace ST.Library.UI.NodeEditor
                 if (this._LockLocation) markerRight -= 12;
                 float markerCenterY = titleRect.Y + (titleRect.Height / 2f);
 
-                // Red ! in a white circle: this is a dead proxy - its target is not in the level.
+                // ! in a text-coloured circle: this is a dead proxy - its target is not in the level.
                 if (this._ShowDeadMarker) {
                     RectangleF circleRect = new RectangleF(markerRight - markerSize, markerCenterY - (markerSize / 2f), markerSize, markerSize);
-                    brush.Color = Color.White;
+                    brush.Color = this._ForeColor;
                     g.FillEllipse(brush, circleRect);
 
-                    brush.Color = Color.FromArgb(200, 30, 45); // red
+                    brush.Color = this._TitleColor;
                     RectangleF textRectBang = circleRect;
                     textRectBang.Y -= 0.5f;
                     g.DrawString("!", s_markerFontBang, brush, textRectBang, s_markerFormat);
@@ -1190,10 +1239,10 @@ namespace ST.Library.UI.NodeEditor
                     markerSpace += markerSize + markerGap;
                 }
 
-                // Asterisk in a white circle: this entity has multiple nodes across the composite's pages.
+                // Asterisk in a text-coloured circle: this entity has multiple nodes across the composite's pages.
                 if (this._ShowMultiNodeMarker) {
                     RectangleF circleRect = new RectangleF(markerRight - markerSize, markerCenterY - (markerSize / 2f), markerSize, markerSize);
-                    brush.Color = Color.White;
+                    brush.Color = this._ForeColor;
                     g.FillEllipse(brush, circleRect);
 
                     // Draw the asterisk geometrically (6 spokes) so it centres perfectly in the circle.
@@ -1202,7 +1251,7 @@ namespace ST.Library.UI.NodeEditor
                     const float spokeRadius = 3.5f;
                     Color oldPenColor = dt.Pen.Color;
                     float oldPenWidth = dt.Pen.Width;
-                    dt.Pen.Color = Color.FromArgb(0, 120, 215); // blue
+                    dt.Pen.Color = this._TitleColor;
                     dt.Pen.Width = 1.6f;
                     for (int spoke = 0; spoke < 3; spoke++) {
                         double angle = (Math.PI / 2.0) + (spoke * Math.PI / 3.0); // 90, 150, 210 degrees
@@ -1217,13 +1266,13 @@ namespace ST.Library.UI.NodeEditor
                     markerSpace += markerSize + markerGap;
                 }
 
-                // Red P in a white circle: this entity is referenced by a proxy elsewhere.
+                // P in a text-coloured circle: this entity is referenced by a proxy elsewhere.
                 if (this._ShowProxyRefMarker) {
                     RectangleF circleRect = new RectangleF(markerRight - markerSize, markerCenterY - (markerSize / 2f), markerSize, markerSize);
-                    brush.Color = Color.White;
+                    brush.Color = this._ForeColor;
                     g.FillEllipse(brush, circleRect);
 
-                    brush.Color = Color.FromArgb(200, 30, 45); // red
+                    brush.Color = this._TitleColor;
                     // Nudge up fractionally: cap-height glyphs centre slightly low otherwise.
                     RectangleF textRectP = circleRect;
                     textRectP.Y -= 0.5f;
