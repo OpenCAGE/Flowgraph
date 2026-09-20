@@ -11,6 +11,7 @@ using CATHODE.Scripting.Internal;
 using System.Drawing.Drawing2D;
 using System.Diagnostics;
 using CATHODE.Animations;
+using CathodeLib;
 /*
 MIT License
 
@@ -152,8 +153,68 @@ namespace ST.Library.UI.NodeEditor
         /// </summary>
         public Color BackColor {
             get { return _BackColor; }
-            protected set {
+            set {
                 _BackColor = value;
+                this.Invalidate();
+            }
+        }
+
+        private Color _OptionTextColor = Color.White;
+        /// <summary>
+        /// Get or set the text color for node options (pins).
+        /// </summary>
+        public Color OptionTextColor {
+            get { return _OptionTextColor; }
+            set {
+                _OptionTextColor = value;
+                foreach (STNodeOption op in this.InputOptions) op.TextColor = value;
+                foreach (STNodeOption op in this.OutputOptions) op.TextColor = value;
+                this.Invalidate();
+            }
+        }
+
+        private Color _TopBottomOptionTextColour = Color.White;
+        /// <summary>
+        /// Get or set the text color for node options (pins) on the top/bottom.
+        /// </summary>
+        public Color TopBottomOptionTextColour
+        {
+            get { return _TopBottomOptionTextColour; }
+            set
+            {
+                _TopBottomOptionTextColour = value;
+                foreach (STNodeOption op in this.TopOptions) op.TextColor = value;
+                foreach (STNodeOption op in this.BottomOptions) op.TextColor = value;
+                this.Invalidate();
+            }
+        }
+
+        private Color _TopBottomPinColour = Color.Transparent;
+        /// <summary>
+        /// Get or set the dot color for top and bottom data pins.
+        /// </summary>
+        public Color TopBottomPinColour {
+            get { return _TopBottomPinColour; }
+            set {
+                _TopBottomPinColour = value;
+                foreach (STNodeOption op in this.TopOptions) op.DotColor = value;
+                foreach (STNodeOption op in this.BottomOptions) op.DotColor = value;
+                this.Invalidate();
+            }
+        }
+
+        private Color _BodyPinColour = Color.Transparent;
+        /// <summary>
+        /// Get or set the dot color for top and bottom data pins.
+        /// </summary>
+        public Color BodyPinColour
+        {
+            get { return _BodyPinColour; }
+            set
+            {
+                _BodyPinColour = value;
+                foreach (STNodeOption op in this.TopOptions) op.DotColor = value;
+                foreach (STNodeOption op in this.BottomOptions) op.DotColor = value;
                 this.Invalidate();
             }
         }
@@ -701,11 +762,30 @@ namespace ST.Library.UI.NodeEditor
             TitleHeight = height;
         }
 
-        public void SetColour(Color colourTitleBar, Color colourTopBottomPins, Color colourText)
+        public void SetColour(Color topBottomBackColour, Color topBottomTextColour, Color topPinBottomPinColour, Color titleBackColour, Color titleTextColour, Color mainBodyBackColour, Color mainBodyTextColour, Color mainBodyPinColour)
         {
-            TitleColor = colourTitleBar;
-            PinAreaColor = colourTopBottomPins;
-            ForeColor = colourText;
+            TitleColor = titleBackColour;
+            PinAreaColor = topBottomBackColour;
+            ForeColor = titleTextColour;
+            BackColor = mainBodyBackColour;
+            OptionTextColor = mainBodyTextColour;
+            TopBottomOptionTextColour = topBottomTextColour;
+            TopBottomPinColour = topPinBottomPinColour;
+        }
+
+        public void SetOpenCAGEColour(Color baseColour)
+        {
+            Color accentTopBottom = Color.FromArgb(Math.Max(baseColour.R - 40, 0), Math.Max(baseColour.G - 40, 0), Math.Max(baseColour.B - 40, 0));
+            Color accentMiddle = Color.FromArgb(Math.Max(baseColour.R - 100, 0), Math.Max(baseColour.G - 100, 0), Math.Max(baseColour.B - 100, 0));
+            
+            SetColour(
+                accentTopBottom, GetLuminance(accentTopBottom) > 160 ? Color.Black : Color.White, Color.Transparent,
+                baseColour, GetLuminance(baseColour) > 160 ? Color.Black : Color.White,
+                accentMiddle, GetLuminance(accentMiddle) > 160 ? Color.Black : Color.White, Color.Transparent);
+        }
+        private int GetLuminance(Color colour)
+        {
+            return (colour.R * 299 + colour.G * 587 + colour.B * 114) / 1000;
         }
 
         public void SetPosition(Point location)
@@ -722,6 +802,8 @@ namespace ST.Library.UI.NodeEditor
 
             var newOp = this.InputOptions.Add(option, typeof(void), false);
             newOp.Style = PinStyle.ArrowRight;
+            newOp.TextColor = OptionTextColor;
+            if (BodyPinColour != Color.Transparent) newOp.DotColor = BodyPinColour;
             return newOp;
         }
         public STNodeOption AddOutputOption(ShortGuid option, bool unique = false)
@@ -733,6 +815,8 @@ namespace ST.Library.UI.NodeEditor
 
             var newOp = this.OutputOptions.Add(option, typeof(void), false);
             newOp.Style = PinStyle.ArrowRight;
+            newOp.TextColor = OptionTextColor;
+            if (BodyPinColour != Color.Transparent) newOp.DotColor = BodyPinColour;
             return newOp;
         }
 
@@ -746,6 +830,8 @@ namespace ST.Library.UI.NodeEditor
             var newOp = this.TopOptions.Add(option, typeof(void), false);
             if (style != PinStyle.ArrowUp && style != PinStyle.ArrowDown) style = PinStyle.ArrowUp;
             newOp.Style = style;
+            newOp.TextColor = TopBottomOptionTextColour;
+            if (TopBottomPinColour != Color.Transparent) newOp.DotColor = TopBottomPinColour;
             return newOp;
         }
         public STNodeOption AddBottomOption(ShortGuid option, bool unique = false)
@@ -757,6 +843,8 @@ namespace ST.Library.UI.NodeEditor
 
             var newOp = this.BottomOptions.Add(option, typeof(void), false);
             newOp.Style = PinStyle.ArrowDown;
+            newOp.TextColor = TopBottomOptionTextColour;
+            if (TopBottomPinColour != Color.Transparent) newOp.DotColor = TopBottomPinColour;
             return newOp;
         }
 

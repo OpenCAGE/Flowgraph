@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -880,6 +880,9 @@ namespace ST.Library.UI.NodeEditor
         }
 
         protected override void OnMouseDown(MouseEventArgs e) {
+            bool wasConnecting = m_ca == CanvasAction.ConnectOption;
+            STNodeOption previousOptionDown = m_option_down;
+
             base.OnMouseDown(e);
             
             // Initialize drag tracking flags
@@ -925,6 +928,19 @@ namespace ST.Library.UI.NodeEditor
             }
 
             if (nfi.NodeOption != null) {                                   //If you click the option connection point
+                if (wasConnecting && previousOptionDown != null && previousOptionDown != nfi.NodeOption)
+                {
+                    if (previousOptionDown.Location == PinLocation.Left)
+                        nfi.NodeOption.ConnectOption(previousOptionDown);
+                    else
+                        previousOptionDown.ConnectOption(nfi.NodeOption);
+                    return;
+                }
+                if (wasConnecting && previousOptionDown == nfi.NodeOption)
+                {
+                    // Clicked the same pin twice, cancel
+                    return;
+                }
                 this.StartConnect(nfi.NodeOption);
                 return;
             }
@@ -1130,6 +1146,7 @@ namespace ST.Library.UI.NodeEditor
                     bRedraw = true;
                 }
             }
+            if (m_ca == CanvasAction.ConnectOption) bRedraw = true;
             if (bRedraw) this.Invalidate();
         }
 
@@ -1255,7 +1272,11 @@ namespace ST.Library.UI.NodeEditor
                     }
                     break;
                 case CanvasAction.ConnectOption:    //If it is connecting, end the connection
-                    if (e.Location == m_pt_down_in_control) break;
+                    if (e.Location == m_pt_down_in_control) {
+                        m_ca = CanvasAction.ConnectOption;
+                        m_is_process_mouse_event = false;
+                        return; // Keep connecting for click-to-connect mode
+                    }
                     if (nfi.NodeOption != null) {
                         if (m_option_down.Location == PinLocation.Left)
                             nfi.NodeOption.ConnectOption(m_option_down);
