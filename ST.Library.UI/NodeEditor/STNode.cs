@@ -717,6 +717,39 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        private Color _ZoneColour = Color.Empty;
+        /// <summary>
+        /// OpenCAGE: the colour of the zone the entity goes with (the colour the viewport draws that zone
+        /// in), or Color.Empty for none. Drawn as diagonal stripes over the node, under its text and pins,
+        /// while the viewport is highlighting zones - so a node reads as "in the green zone" at a glance,
+        /// selected or not, and the selection outline stays what it was.
+        /// </summary>
+        public Color ZoneColour {
+            get { return _ZoneColour; }
+        }
+        /// <summary>OpenCAGE: set the zone this node goes with, Color.Empty for none.</summary>
+        /// <returns>Whether anything changed, and the node wants repainting.</returns>
+        public bool SetZone(Color colour) {
+            if (_ZoneColour == colour) return false;
+            _ZoneColour = colour;
+            return true;
+        }
+        // OpenCAGE: stripe one part of the node in its zone colour, clipped to the node's rounded outline. Called
+        // once that part's background is down and before anything is drawn on it, so text and pins stay clear.
+        // The hatch is anchored to the canvas, not the rectangle, so the parts line up.
+        private void DrawZoneStripes(Graphics g, Rectangle part) {
+            if (_ZoneColour.IsEmpty) return;
+            GraphicsState state = g.Save();
+            int radius = this.Owner?.RoundedCornerRadius ?? -1;
+            if (radius >= 0) {
+                using (GraphicsPath outline = RoundedCornerUtils.RoundedRect(new Rectangle(this.Left, this.Top, this.Width, this.Height), radius))
+                    g.SetClip(outline, CombineMode.Intersect);
+            }
+            using (HatchBrush stripes = new HatchBrush(HatchStyle.WideUpwardDiagonal, Color.FromArgb(150, _ZoneColour), Color.Transparent))
+                g.FillRectangle(stripes, part);
+            g.Restore(state);
+        }
+
         private bool _LetGetOptions = false;
         /// <summary>
         /// Get or set whether to allow external access to STNodeOption.
@@ -1131,6 +1164,10 @@ namespace ST.Library.UI.NodeEditor
                 }
             }
             
+            // OpenCAGE: the zone stripes over the backgrounds, under the text and pins (the title bar paints its own
+            // background next and stripes itself once that is down)
+            DrawZoneStripes(dt.Graphics, new Rectangle(this.Left, this.Top, this.Width, this.Height));
+
             // Now draw the title and other body elements on top of the backgrounds
             this.OnDrawTitle(dt);
             this.OnDrawBody(dt);
@@ -1149,6 +1186,7 @@ namespace ST.Library.UI.NodeEditor
                     }
                 }
             }
+
         }
         /// <summary>
         /// Draw the Node header part.
@@ -1192,6 +1230,9 @@ namespace ST.Library.UI.NodeEditor
                     }
                 }
             }
+
+            // OpenCAGE: the zone stripes carry on over the title bar, under its text and markers
+            DrawZoneStripes(g, this.TitleRectangle);
 
             // Draw lock icons, adjusted to the new titleRect position
             if (this._LockOption) {
