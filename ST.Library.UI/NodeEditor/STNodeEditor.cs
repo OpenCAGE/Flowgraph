@@ -625,6 +625,8 @@ namespace ST.Library.UI.NodeEditor
         private DateTime m_dt_alert;
         private Rectangle m_rect_alert;
         private AlertLocation m_al;
+        //Fades the alert out; runs only while one is showing
+        private System.Windows.Forms.Timer m_alert_timer;
 
         private HashSet<STNode> m_nodes_being_dragged = new HashSet<STNode>(); //Nodes currently being dragged
 
@@ -781,7 +783,8 @@ namespace ST.Library.UI.NodeEditor
             base.OnCreateControl();
             m_canvas_move_timer = new System.Windows.Forms.Timer { Interval = 16 };
             m_canvas_move_timer.Tick += this.CanvasMoveTimer_Tick;
-            new Thread(this.ShowAlertThread) { IsBackground = true }.Start();
+            //An alert raised before the control existed still has to fade
+            if (m_alpha_alert != 0) this.StartAlertTimer();
             m_sf = new StringFormat();
             m_sf.Alignment = StringAlignment.Near;
             m_sf.FormatFlags = StringFormatFlags.NoWrap;
@@ -794,6 +797,12 @@ namespace ST.Library.UI.NodeEditor
                 m_canvas_move_timer.Tick -= this.CanvasMoveTimer_Tick;
                 m_canvas_move_timer.Dispose();
                 m_canvas_move_timer = null;
+            }
+            if (m_alert_timer != null) {
+                m_alert_timer.Stop();
+                m_alert_timer.Tick -= this.AlertTimer_Tick;
+                m_alert_timer.Dispose();
+                m_alert_timer = null;
             }
             base.OnHandleDestroyed(e);
         }
@@ -2003,25 +2012,40 @@ namespace ST.Library.UI.NodeEditor
             m_canvas_move_timer.Start();
         }
 
-        private void ShowAlertThread() {
-            while (true) {
-                int nTime = m_time_alert - (int)DateTime.Now.Subtract(m_dt_alert).TotalMilliseconds;
-                if (nTime > 0) {
-                    Thread.Sleep(nTime);
-                    continue;
+        /* This was a thread per editor that looped forever, started when the control was created. Nothing ever
+           stopped it, so every flowgraph page opened left one behind - and it held the editor, and every node on
+           it, alive with it: a long session of opening composites ran to hundreds of threads. */
+        private void StartAlertTimer() {
+            if (this.IsDisposed) return;
+            if (this.InvokeRequired) {
+                try {
+                    this.BeginInvoke(new MethodInvoker(this.StartAlertTimer));
+                } catch (InvalidOperationException) {
+                    //The handle went while this was on its way: there is nothing left to fade
                 }
-                if (nTime < -1000) {
-                    if (m_alpha_alert != 0) {
-                        m_alpha_alert = 0;
-                        this.Invalidate();
-                    }
-                    Thread.Sleep(100);
-                } else {
-                    m_alpha_alert = (int)(255 - (-nTime / 1000F) * 255);
-                    this.Invalidate(m_rect_alert);
-                    Thread.Sleep(50);
-                }
+                return;
             }
+            if (m_alert_timer == null) {
+                m_alert_timer = new System.Windows.Forms.Timer { Interval = 50 };
+                m_alert_timer.Tick += this.AlertTimer_Tick;
+            }
+            m_alert_timer.Start();
+        }
+
+        private void AlertTimer_Tick(object sender, EventArgs e) {
+            int nTime = m_time_alert - (int)DateTime.Now.Subtract(m_dt_alert).TotalMilliseconds;
+            if (nTime > 0)
+                return; //Still showing in full
+            if (nTime < -1000) {
+                m_alert_timer.Stop();
+                if (m_alpha_alert != 0) {
+                    m_alpha_alert = 0;
+                    this.Invalidate();
+                }
+                return;
+            }
+            m_alpha_alert = (int)(255 - (-nTime / 1000F) * 255);
+            this.Invalidate(m_rect_alert);
         }
 
         private Image CreateBorderImage(Color clr) {
@@ -2854,6 +2878,7 @@ namespace ST.Library.UI.NodeEditor
             m_dt_alert = DateTime.Now;
             m_alpha_alert = 255;
             m_al = al;
+            this.StartAlertTimer();
             if (bRedraw) this.Invalidate();
         }
         /// <summary>
