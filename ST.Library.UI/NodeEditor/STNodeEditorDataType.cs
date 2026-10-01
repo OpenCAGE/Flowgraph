@@ -130,6 +130,63 @@ namespace ST.Library.UI.NodeEditor
         public PointF P0, P1, P2, P3;
     }
 
+    /// <summary>
+    /// OpenCAGE: how active a connected line is, as STNodeEditor.ConnectionActivityProvider reports it.
+    /// The line runs from the provider's first option (its start) to its second (its end).
+    /// </summary>
+    public struct ConnectionActivity
+    {
+        /// <summary>0..1: how recently the link was active (1 = just now); 0 = not active now.</summary>
+        public float Glow;
+        /// <summary>It has been active since the host last cleared (drawn dimly in the activity colour when not glowing).</summary>
+        public bool Lit;
+        /// <summary>Activity flows from the end option back to the start option (data links).</summary>
+        public bool Reverse;
+        /// <summary>
+        /// The colour the line lights up in: its glow, the line itself, the dim "has been active" line, and a light
+        /// tint of it for the dashes. Color.Empty (the default) is the editor's ActivityColor.
+        /// </summary>
+        public Color Color;
+        /// <summary>Not active: the line is drawn as usual.</summary>
+        public static readonly ConnectionActivity None;
+
+        /// <summary>A line's activity, in the editor's ActivityColor: see Glow, Lit and Reverse.</summary>
+        public ConnectionActivity(float glow, bool lit, bool reverse) : this(glow, lit, reverse, Color.Empty) { }
+
+        /// <summary>A line's activity: see Glow, Lit, Reverse and Color.</summary>
+        public ConnectionActivity(float glow, bool lit, bool reverse, Color color) {
+            this.Glow = glow;
+            this.Lit = lit;
+            this.Reverse = reverse;
+            this.Color = color;
+        }
+    }
+
+    /// <summary>
+    /// OpenCAGE: a short note drawn beside a left or right option's pin, as STNodeEditor.OptionBadgeProvider reports
+    /// it (the live link's count of how many times a relay fired or a method was called): between the pin and the
+    /// label - "[n] label" on the left, "label [n]" on the right. The node keeps its size and pins; the label is cut
+    /// short with an ellipsis when it no longer fits, never the badge.
+    /// </summary>
+    public struct OptionBadge
+    {
+        /// <summary>What to show, e.g. "[3]"; null or empty: no badge.</summary>
+        public string Text;
+        /// <summary>Above 0 (e.g. how recently it changed, 1 = just now): drawn bright; 0: muted. Two states, not a fade.</summary>
+        public float Glow;
+        /// <summary>The badge's colour; Color.Empty (the default) is the editor's ActivityColor.</summary>
+        public Color Color;
+        /// <summary>No badge: the option is drawn as usual.</summary>
+        public static readonly OptionBadge None;
+
+        /// <summary>A badge: see Text, Glow and Color.</summary>
+        public OptionBadge(string text, float glow, Color color) {
+            this.Text = text;
+            this.Glow = glow;
+            this.Color = color;
+        }
+    }
+
     public delegate void STNodeOptionEventHandler(object sender, STNodeOptionEventArgs e);
 
     public class STNodeOptionEventArgs : EventArgs

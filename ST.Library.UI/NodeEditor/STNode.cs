@@ -1533,6 +1533,12 @@ namespace ST.Library.UI.NodeEditor
             if (!RenderingOptions)
                 return;
 
+            // OpenCAGE: with a badge beside the pin (STNodeEditor.OptionBadgeProvider) the label makes room for it
+            if (this.DrawOptionTextWithBadge(dt, op)) {
+                OnDrawOptionalText(dt, op);
+                return;
+            }
+
             Graphics g = dt.Graphics;
             SolidBrush brush = dt.SolidBrush;
             
@@ -1547,6 +1553,10 @@ namespace ST.Library.UI.NodeEditor
             }
             
             RectangleF textRect = op.TextRectangle;
+            StringFormat format = m_sf;
+            // OpenCAGE: a badge across the row keeps its room: a label that would run into it is cut short instead
+            if (!isHorizontalPin && this.NarrowBesideBadge(g, op, ref textRect))
+                format = op.Location == PinLocation.Left ? s_badgeLabelNear : s_badgeLabelFar;
             Font fontToUse = this.Font;
             bool fontCreated = false;
 
@@ -1568,7 +1578,7 @@ namespace ST.Library.UI.NodeEditor
 
             brush.Color = op.TextColor;
             g.SmoothingMode = SmoothingMode.HighQuality;
-            g.DrawString(op.Text, fontToUse, brush, textRect, m_sf);
+            g.DrawString(op.Text, fontToUse, brush, textRect, format);
     
             // Restore the original graphics state.
             g.SetClip(oldClip, CombineMode.Replace);
@@ -1669,6 +1679,246 @@ namespace ST.Library.UI.NodeEditor
                 fontToUse.Dispose();
             }
         }
+        // OpenCAGE: the label beside a badge, cut short with an ellipsis when the row gets too full
+        private static readonly StringFormat s_badgeLabelNear = new StringFormat(StringFormatFlags.NoWrap) {
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisCharacter,
+        };
+        private static readonly StringFormat s_badgeLabelFar = new StringFormat(StringFormatFlags.NoWrap) {
+            Alignment = StringAlignment.Far,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisCharacter,
+        };
+        private const float BadgeRowGap = 6f;   // kept clear between the two sides of a pin row
+        private const float BadgeGap = 3f;      // between a badge and its label
+        private static readonly Color s_badgeBackColor = Color.FromArgb(110, 0, 0, 0);  // the chip under a badge's text
+
+        /// <summary>
+        /// OpenCAGE: draw a left or right option's label with its badge (STNodeEditor.OptionBadgeProvider) between it
+        /// and the pin: "[n] label" on the left, "label [n]" on the right. The node keeps its size and its pins stay
+        /// put: when the row gets too full - this side's badge and label, and whatever the option on the other side of
+        /// the row shows - the label is cut short with an ellipsis, never the badge. False (nothing drawn) when the
+        /// option has no badge, and it is drawn as usual.
+        /// </summary>
+        private bool DrawOptionTextWithBadge(DrawingTools dt, STNodeOption op) {
+            if (op.Location != PinLocation.Left && op.Location != PinLocation.Right) return false;
+            Func<STNodeOption, OptionBadge> provider = this._Owner?.OptionBadgeProvider;
+            if (provider == null) return false;
+            OptionBadge badge = BadgeOf(provider, op);
+            if (string.IsNullOrEmpty(badge.Text)) return false;
+
+            Graphics g = dt.Graphics;
+            SolidBrush brush = dt.SolidBrush;
+            bool left = op.Location == PinLocation.Left;
+            m_sf.Alignment = left ? StringAlignment.Near : StringAlignment.Far;   // as the usual drawing leaves it
+            m_sf.LineAlignment = StringAlignment.Center;
+            Rectangle textRect = op.TextRectangle;
+            float badgeWidth, labelWidth, labelSpace;
+            this.LayOutBadgedOption(g, op, badge, provider, out badgeWidth, out labelWidth, out labelSpace);
+            float badgeSpan = badgeWidth + BadgeGap;
+
+            RectangleF badgeRect, labelRect;
+            if (left) {
+                badgeRect = new RectangleF(textRect.Left, textRect.Top, badgeWidth, textRect.Height);
+                labelRect = new RectangleF(textRect.Left + badgeSpan, textRect.Top, labelSpace, textRect.Height);
+            } else {
+                badgeRect = new RectangleF(textRect.Right - badgeWidth, textRect.Top, badgeWidth, textRect.Height);
+                labelRect = new RectangleF(textRect.Right - badgeSpan - labelSpace, textRect.Top, labelSpace, textRect.Height);
+            }
+
+            // A dark chip under the badge's text, so it reads on light and dark node bodies alike
+            g.SmoothingMode = SmoothingMode.HighQuality;
+            float glyphs = g.MeasureString(badge.Text, this._FontBold, PointF.Empty, StringFormat.GenericTypographic).Width;
+            float height = this._FontBold.GetHeight(g);
+            Rectangle chip = Rectangle.Round(new RectangleF(badgeRect.X + (badgeRect.Width - glyphs) / 2f - 3f,
+                badgeRect.Y + (badgeRect.Height - height) / 2f - 0.5f, glyphs + 6f, height + 1f));
+            brush.Color = s_badgeBackColor;
+            using (GraphicsPath path = RoundedCornerUtils.RoundedRect(chip, 4))
+                g.FillPath(brush, path);
+
+            Region oldClip = g.Clip;
+            g.SetClip(textRect, CombineMode.Intersect);
+            Color colour = badge.Color.IsEmpty ? this._Owner.ActivityColor : badge.Color;
+            brush.Color = BadgeColour(colour, this._BackColor, badge.Glow > 0f);
+            g.DrawString(badge.Text, this._FontBold, brush, badgeRect, m_sf);
+            if (!string.IsNullOrEmpty(op.Text) && labelSpace >= 1f) {
+                brush.Color = op.TextColor;
+                g.DrawString(op.Text, this._Font, brush, labelRect, left ? s_badgeLabelNear : s_badgeLabelFar);
+            }
+            g.SetClip(oldClip, CombineMode.Replace);
+            g.SmoothingMode = SmoothingMode.None;
+            oldClip.Dispose();
+            m_sf.LineAlignment = StringAlignment.Center;
+            return true;
+        }
+
+        /// <summary>
+        /// OpenCAGE: how a left or right option with a badge shares its pin row (see DrawOptionTextWithBadge): its badge's
+        /// width, its label's, and the room its label gets beside the badge (0 when only the badge fits). The row runs
+        /// from the left label's start to the right label's end. The option on the other side keeps all it shows, unless
+        /// it has a badge too and both cannot fit - then each gets at least half - or it has none and this badge would not
+        /// fit beside it: the badge keeps its room, and that label is cut short instead (NarrowBesideBadge).
+        /// </summary>
+        private void LayOutBadgedOption(Graphics g, STNodeOption op, OptionBadge badge, Func<STNodeOption, OptionBadge> provider,
+            out float badgeWidth, out float labelWidth, out float labelSpace) {
+            bool left = op.Location == PinLocation.Left;
+            Rectangle textRect = op.TextRectangle;
+            badgeWidth = MeasureOptionText(g, badge.Text, this._FontBold);
+            labelWidth = MeasureOptionText(g, op.Text, this._Font);
+
+            float rowStart = textRect.Left, rowEnd = textRect.Right, other = 0f;
+            bool otherBadged = false;
+            STNodeOption partner = this.RowPartner(op);
+            if (partner != null) {
+                if (left) rowEnd = partner.TextRectangle.Right; else rowStart = partner.TextRectangle.Left;
+                other = MeasureOptionText(g, partner.Text, this._Font);
+                OptionBadge partnerBadge = BadgeOf(provider, partner);
+                if (!string.IsNullOrEmpty(partnerBadge.Text)) {
+                    other += MeasureOptionText(g, partnerBadge.Text, this._FontBold) + BadgeGap;
+                    otherBadged = true;
+                }
+            }
+            float badgeSpan = badgeWidth + BadgeGap;
+            float space = rowEnd - rowStart - (other > 0f ? BadgeRowGap : 0f);
+            float need = badgeSpan + labelWidth, mine;
+            if (need + other <= space) mine = space - other;
+            else if (!otherBadged) mine = Math.Max(space - other, badgeSpan);
+            else if (other <= space / 2f) mine = space - other;
+            else mine = need <= space / 2f ? need : space / 2f;
+            mine = Math.Min(mine, textRect.Width);
+            labelSpace = Math.Max(0f, mine - badgeSpan);
+            if (labelSpace >= labelWidth - 0.5f) labelSpace = Math.Max(labelSpace, labelWidth + 1f);   // fits: never trimmed by rounding
+        }
+
+        /// <summary>
+        /// OpenCAGE: the room a left or right option with no badge has for its label when the option on the other side of
+        /// its row has one, and they cannot both fit: the badge keeps its room (see LayOutBadgedOption), and textRect is
+        /// narrowed on that side to what is left, for the label to be cut short there. False - textRect as it was - when
+        /// there is no badge across the row, or the label fits beside what it shows.
+        /// </summary>
+        private bool NarrowBesideBadge(Graphics g, STNodeOption op, ref RectangleF textRect) {
+            if (op.Location != PinLocation.Left && op.Location != PinLocation.Right) return false;
+            Func<STNodeOption, OptionBadge> provider = this._Owner?.OptionBadgeProvider;
+            if (provider == null || string.IsNullOrEmpty(op.Text)) return false;
+            STNodeOption partner = this.RowPartner(op);
+            if (partner == null) return false;
+            OptionBadge partnerBadge = BadgeOf(provider, partner);
+            if (string.IsNullOrEmpty(partnerBadge.Text)) return false;
+
+            float badgeWidth, labelWidth, labelSpace;
+            this.LayOutBadgedOption(g, partner, partnerBadge, provider, out badgeWidth, out labelWidth, out labelSpace);
+            bool left = op.Location == PinLocation.Left;
+            float rowStart = left ? textRect.Left : partner.TextRectangle.Left;
+            float rowEnd = left ? partner.TextRectangle.Right : textRect.Right;
+            // What the partner draws, from its pin in (its badge, and as much of its label as it shows), and the gap
+            float room = rowEnd - rowStart - (badgeWidth + BadgeGap + Math.Min(labelWidth, labelSpace)) - BadgeRowGap;
+            if (MeasureOptionText(g, op.Text, this._Font) <= room + 0.5f) return false;
+            room = Math.Max(0f, Math.Min(room, textRect.Width));
+            textRect = left ? new RectangleF(textRect.Left, textRect.Top, room, textRect.Height)
+                            : new RectangleF(textRect.Right - room, textRect.Top, room, textRect.Height);
+            return true;
+        }
+
+        /// <summary>
+        /// OpenCAGE: whether the node hides whatever is drawn under it - its title, body and pin bars are opaque - so a
+        /// repaint of the lines behind it (the editor's activity ticks) can leave it out.
+        /// </summary>
+        internal bool CoversWhatIsUnder {
+            get {
+                if (this._TitleColor.A != 255) return false;
+                if (!RenderingOptions) return this._Height <= this._TitleHeight;   // just the title bar
+                bool bars = this.TopOptions.Count > 0 || this.BottomOptions.Count > 0;
+                return this._BackColor.A == 255 && (!bars || this.PinAreaColor.A == 255);
+            }
+        }
+
+        /// <summary>
+        /// OpenCAGE: whether DrawOutsideBody is all this node paints outside its body: not when it has a mark to draw,
+        /// or is a type that draws itself its own way.
+        /// </summary>
+        internal bool CanDrawOutsideBody {
+            get { return string.IsNullOrEmpty(this._Mark) && DrawsAsBase(this.GetType()); }
+        }
+
+        /// <summary>
+        /// OpenCAGE: draw only what the node itself paints outside its body - its pins and the text beside them
+        /// (OnDrawOptionalText) - in the order its full drawing does, for a repaint that does not reach the body (see
+        /// STNodeEditor's NodeBodyBounds; the editor draws the border round it). Only when CanDrawOutsideBody.
+        /// </summary>
+        internal void DrawOutsideBody(DrawingTools dt) {
+            foreach (STNodeOptionCollection options in new[] { this.TopOptions, this.InputOptions, this.OutputOptions, this.BottomOptions }) {
+                foreach (STNodeOption op in options) {
+                    if (op == STNodeOption.Empty) continue;
+                    this.OnDrawOptionDot(dt, op);
+                    if (!RenderingOptions || (op.Location != PinLocation.Left && op.Location != PinLocation.Right)) continue;
+                    m_sf.Alignment = op.Location == PinLocation.Left ? StringAlignment.Near : StringAlignment.Far;   // as OnDrawOptionText leaves it
+                    m_sf.LineAlignment = StringAlignment.Center;
+                    this.OnDrawOptionalText(dt, op);
+                }
+            }
+        }
+
+        // OpenCAGE: whether a node type draws itself as STNode does (DrawOutsideBody can stand in for its drawing)
+        private static readonly Dictionary<Type, bool> s_drawsAsBase = new Dictionary<Type, bool>();
+        private static bool DrawsAsBase(Type type) {
+            lock (s_drawsAsBase) {
+                bool plain;
+                if (s_drawsAsBase.TryGetValue(type, out plain)) return plain;
+                plain = true;
+                try {
+                    System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+                    Type[] dtOnly = { typeof(DrawingTools) }, dtOption = { typeof(DrawingTools), typeof(STNodeOption) };
+                    foreach (string name in new[] { "OnDrawNode", "OnDrawBody", "OnDrawTitle" }) {
+                        System.Reflection.MethodInfo m = type.GetMethod(name, flags, null, dtOnly, null);
+                        if (m == null || m.DeclaringType != typeof(STNode)) plain = false;
+                    }
+                    foreach (string name in new[] { "OnDrawOptionDot", "OnDrawOptionText", "OnDrawOptionalText" }) {
+                        System.Reflection.MethodInfo m = type.GetMethod(name, flags, null, dtOption, null);
+                        if (m == null || m.DeclaringType != typeof(STNode)) plain = false;
+                    }
+                } catch (Exception) {
+                    plain = false;
+                }
+                s_drawsAsBase[type] = plain;
+                return plain;
+            }
+        }
+
+        private static OptionBadge BadgeOf(Func<STNodeOption, OptionBadge> provider, STNodeOption op) {
+            try {
+                return provider(op);
+            } catch (Exception) {
+                return OptionBadge.None;    // A host fault must not stop the node painting
+            }
+        }
+
+        private float MeasureOptionText(Graphics g, string text, Font font) {
+            if (string.IsNullOrEmpty(text)) return 0f;
+            return g.MeasureString(text, font, new SizeF(100000f, 1000f), m_sf).Width;
+        }
+
+        // OpenCAGE: the option drawn on the other side of op's row (left and right options share rows by index)
+        private STNodeOption RowPartner(STNodeOption op) {
+            STNodeOptionCollection mine = op.Location == PinLocation.Left ? this._InputOptions : this._OutputOptions;
+            STNodeOptionCollection theirs = op.Location == PinLocation.Left ? this._OutputOptions : this._InputOptions;
+            int row = mine.IndexOf(op);
+            if (row < 0 || row >= theirs.Count) return null;
+            STNodeOption partner = theirs[row];
+            return partner == null || partner == STNodeOption.Empty ? null : partner;
+        }
+
+        // OpenCAGE: a badge's text colour - its colour while it glows at all, else a muted shade of it (towards the
+        // node's body colour). Two states, not a fade, so a badge needs repainting only when its text changes or its
+        // glow starts or ends - never on each frame of the lines' animation.
+        private static Color BadgeColour(Color colour, Color body, bool glowing) {
+            if (glowing) return Color.FromArgb(255, colour);
+            return Color.FromArgb(
+                (int)(body.R + (colour.R - body.R) * 0.6f),
+                (int)(body.G + (colour.G - body.G) * 0.6f),
+                (int)(body.B + (colour.B - body.B) * 0.6f));
+        }
+
         protected virtual Point OnSetOptionDotLocation(STNodeOption op, Point pt, int nIndex) {
             return pt;
         }

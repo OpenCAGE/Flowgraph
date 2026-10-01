@@ -102,6 +102,13 @@ namespace ST.Library.UI.NodeEditor
             public int OffsetY;
         }
 
+        private struct ActivityLine     //OpenCAGE: a line ConnectionActivityProvider lit up, kept to draw over the rest
+        {
+            public PointF P0, P1, P2, P3;
+            public ConnectionActivity Activity;
+            public Color UsualColor;    //The colour the line was drawn in before
+        }
+
         #endregion
 
         #region Properties ------------------------------------------------------------------------------------------------------
@@ -397,6 +404,101 @@ namespace ST.Library.UI.NodeEditor
         [Browsable(false)]
         public Func<STNodeOption, STNodeOption, Color> ConnectionColorOverride { get; set; }
 
+        /// <summary>
+        /// OpenCAGE: an optional say in how active each connected line is (the live link lights up the links the
+        /// running game fires), called with the same two options as ConnectionColorOverride for every line on
+        /// screen. A line it gives a Glow or Lit is drawn over the others in its activity's Color (or ActivityColor).
+        /// Null (the default) draws nothing extra. The host repaints when its answers change.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Func<STNodeOption, STNodeOption, ConnectionActivity> ConnectionActivityProvider { get; set; }
+
+        /// <summary>
+        /// OpenCAGE: an optional badge beside each left and right option's pin (the live link's count of how many
+        /// times a relay fired or a method was called), asked for every such option of every node drawn. Null (the
+        /// default) draws nothing extra. The host repaints when its answers change.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Func<STNodeOption, OptionBadge> OptionBadgeProvider { get; set; }
+
+        /// <summary>
+        /// OpenCAGE: how far the dashes on glowing lines have marched, in canvas pixels at 100% zoom. The host
+        /// advances it to animate them; setting it does not repaint.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public float ActivityPhase { get; set; }
+
+        private Color _ActivityColor = Color.FromArgb(255, 140, 0);
+        /// <summary>
+        /// OpenCAGE: the colour of the lines ConnectionActivityProvider lights up, and of the badges, when they do not
+        /// give one of their own.
+        /// </summary>
+        [Description("The colour of the lines ConnectionActivityProvider lights up."), DefaultValue(typeof(Color), "255, 140, 0")]
+        public Color ActivityColor {
+            get { return _ActivityColor; }
+            set {
+                _ActivityColor = value;
+                this.Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// OpenCAGE: the area (control coordinates) of the on-screen lines that glowed at the last paint, glow
+        /// included; empty when none did. InvalidateActivity() repaints much less: just the lines.
+        /// </summary>
+        [Browsable(false)]
+        public Rectangle ActivityBounds {
+            get { return m_rect_activity; }
+        }
+
+        /// <summary>
+        /// OpenCAGE: repaint just the lines that glowed at the last paint, for an animation tick: each as a run of
+        /// small rectangles along it, leaving out the nodes' bodies - the nodes at its ends redraw only their border and
+        /// pins, and nothing between the lines is redrawn. False (nothing repainted) when no line glowed. A line that
+        /// starts glowing is not in it (a full Invalidate() is), and the pixels of a line at a pin, under the node's
+        /// border, keep the glow they had: after the last glow has faded, finish with a full Invalidate(). Badges do
+        /// not animate: repaint a node when its badge's text changes or its glow starts or ends.
+        /// </summary>
+        public bool InvalidateActivity() {
+            if (m_lst_activity_rects.Count == 0 || !this.IsHandleCreated) return false;
+            //Plain GDI regions, each made from its whole list of rectangles at once: a tick does this ~20 times a
+            //second, and GDI+ regions (or adding the rectangles one by one) cost far more
+            IntPtr region = RegionOfRects(m_lst_activity_rects), bodies = RegionOfRects(m_lst_activity_bodies);
+            try {
+                if (region == IntPtr.Zero || (m_lst_activity_bodies.Count != 0 && bodies == IntPtr.Zero)) {
+                    this.Invalidate(m_rect_activity);
+                    return true;
+                }
+                if (bodies != IntPtr.Zero) CombineRgn(region, region, bodies, RGN_DIFF);
+                InvalidateRgn(this.Handle, region, !this.GetStyle(ControlStyles.Opaque));
+            } finally {
+                if (region != IntPtr.Zero) DeleteObject(region);
+                if (bodies != IntPtr.Zero) DeleteObject(bodies);
+            }
+            this.OnInvalidated(new InvalidateEventArgs(m_rect_activity));    //as Invalidate(Region) would
+            return true;
+        }
+
+        //OpenCAGE: a GDI region of the union of some rectangles (they may overlap), or zero for none
+        private static IntPtr RegionOfRects(List<Rectangle> rects) {
+            if (rects.Count == 0) return IntPtr.Zero;
+            byte[] data = new byte[32 + 16 * rects.Count];  //the region data header, then the rectangles
+            Rectangle bounds = rects[0];
+            for (int i = 0; i < rects.Count; i++) {
+                Rectangle r = rects[i];
+                bounds = Rectangle.Union(bounds, r);
+                PutInt(data, 32 + 16 * i, r.Left); PutInt(data, 36 + 16 * i, r.Top);
+                PutInt(data, 40 + 16 * i, r.Right); PutInt(data, 44 + 16 * i, r.Bottom);
+            }
+            PutInt(data, 0, 32); PutInt(data, 4, 1); PutInt(data, 8, rects.Count); PutInt(data, 12, 16 * rects.Count);
+            PutInt(data, 16, bounds.Left); PutInt(data, 20, bounds.Top); PutInt(data, 24, bounds.Right); PutInt(data, 28, bounds.Bottom);
+            return ExtCreateRegion(IntPtr.Zero, (uint)data.Length, data);
+        }
+
+        private static void PutInt(byte[] data, int at, int value) {
+            data[at] = (byte)value; data[at + 1] = (byte)(value >> 8); data[at + 2] = (byte)(value >> 16); data[at + 3] = (byte)(value >> 24);
+        }
+
         private Color _HighLineColor = Color.Cyan;
         /// <summary>
         /// Get or set the color of the highlighted line in the canvas.
@@ -607,6 +709,43 @@ namespace ST.Library.UI.NodeEditor
         private Pen m_p_line = new Pen(Color.Cyan, 2f);             //Used to draw connected lines
         private Pen m_p_line_hover = new Pen(Color.Cyan, 4f);       //Used to draw the line when the mouse is hovering
         private GraphicsPath m_gp_hover;                            //The current connection path where the mouse is hovering
+        //OpenCAGE: the lines ConnectionActivityProvider lights up - a soft glow, the line itself, and marching dashes
+        private Pen m_p_activity_glow = new Pen(Color.Orange, 9f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        private float m_activity_glow_width = 9f;                   //The glow's width; its layers are drawn relative to it
+        private static readonly float[] s_activity_glow_layers = { 1.5f, 26f, 1f, 40f, 0.55f, 64f }; //Width (x the glow's), alpha at full glow
+        private Pen m_p_activity_line = new Pen(Color.Orange, 2.5f);
+        private static readonly float[] s_activity_dash_pattern = { 3f, 3f };   //Dash, gap: in pen widths
+        private Pen m_p_activity_dash = new Pen(Color.White, 2f) { DashPattern = s_activity_dash_pattern, DashCap = DashCap.Round };
+        private List<ActivityLine> m_lst_activity = new List<ActivityLine>(); //This paint's lit lines, drawn over the rest
+        private Rectangle m_rect_activity;                          //See ActivityBounds
+        //See InvalidateActivity (control coordinates): the glowing lines, and the node bodies they leave out
+        private List<Rectangle> m_lst_activity_rects = new List<Rectangle>();
+        private List<Rectangle> m_lst_activity_bodies = new List<Rectangle>();
+        //OpenCAGE: while OnPaint draws, the canvas area it repaints (the clip, padded for line widths): nodes and
+        //lines that miss it are left out. Off outside OnPaint (GetCanvasImage draws everything as before).
+        private bool m_cull_to_clip;
+        private RectangleF m_rect_clip_canvas;
+        //OpenCAGE: while a WM_PAINT is handled, the area Windows repaints when it is more than one rectangle (an
+        //activity tick's runs of rectangles along the glowing lines): OnPaint clips to it and leaves out what misses
+        //all of its rectangles (those in canvas coordinates, padded like the clip). Null otherwise.
+        private Region m_paint_region;
+        private RectangleF[] m_paint_region_canvas;
+        private static readonly Matrix s_identity = new Matrix();
+        private const int WM_PAINT = 0x000F;
+        private const int COMPLEXREGION = 3;
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetUpdateRgn(IntPtr hWnd, IntPtr hRgn, bool bErase);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        private static extern IntPtr CreateRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        private static extern bool DeleteObject(IntPtr hObject);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        private static extern IntPtr ExtCreateRegion(IntPtr lpXform, uint nCount, byte[] lpRgnData);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        private static extern int CombineRgn(IntPtr hrgnDest, IntPtr hrgnSrc1, IntPtr hrgnSrc2, int fnCombineMode);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool InvalidateRgn(IntPtr hWnd, IntPtr hRgn, bool bErase);
+        private const int RGN_DIFF = 4;
         private StringFormat m_sf = new StringFormat();             //Text format Used to set the text format when Mark draws
         //Save the node relationship corresponding to each connecting line
         private Dictionary<GraphicsPath, ConnectionInfo> m_dic_gp_info = new Dictionary<GraphicsPath, ConnectionInfo>();
@@ -808,6 +947,16 @@ namespace ST.Library.UI.NodeEditor
         }
 
         protected override void WndProc(ref Message m) {
+            //OpenCAGE: see m_paint_region
+            if (m.Msg == WM_PAINT && m.WParam == IntPtr.Zero && this.CaptureUpdateRegion()) {
+                try {
+                    base.WndProc(ref m);
+                } finally {
+                    m_paint_region.Dispose();
+                    m_paint_region = null;
+                }
+                return;
+            }
             base.WndProc(ref m);
             try {
                 if (m.Msg == WM_MOUSEHWHEEL) { //Get horizontal scrolling message
@@ -830,6 +979,8 @@ namespace ST.Library.UI.NodeEditor
         protected override void OnPaint(PaintEventArgs e) {
             base.OnPaint(e);
             Graphics g = e.Graphics;
+            //OpenCAGE: a repaint of several rectangles (see m_paint_region) draws in just those
+            RectangleF[] paintRects = this.ClipToPaintRegion(g, e.ClipRectangle);
             g.Clear(this.BackColor);
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             m_drawing_tools.Graphics = g;
@@ -840,8 +991,25 @@ namespace ST.Library.UI.NodeEditor
             g.TranslateTransform(this._CanvasOffsetX, this._CanvasOffsetY); //Move the coordinate system
             g.ScaleTransform(this._CanvasScale, this._CanvasScale);         //Scale the drawing surface
 
-            this.OnDrawConnectedLine(m_drawing_tools);
-            this.OnDrawNode(m_drawing_tools, this.ControlToCanvas(this.ClientRectangle));
+            //OpenCAGE: only what crosses the repainted area is drawn, so repainting a few lines (the live link's
+            //activity animation) does not draw the whole page - and nodes off screen are never drawn
+            m_rect_clip_canvas = new RectangleF(
+                (e.ClipRectangle.X - this._CanvasOffsetX) / this._CanvasScale,
+                (e.ClipRectangle.Y - this._CanvasOffsetY) / this._CanvasScale,
+                e.ClipRectangle.Width / this._CanvasScale,
+                e.ClipRectangle.Height / this._CanvasScale);
+            m_paint_region_canvas = paintRects == null ? null : this.PaintRectsToCanvas(paintRects);
+            m_lst_activity_rects.Clear();
+            m_lst_activity_bodies.Clear();
+            m_cull_to_clip = true;
+            try {
+                this.OnDrawConnectedLine(m_drawing_tools);  //(also gathers the glowing lines' area)
+                this.GatherActivityBounds();
+                this.OnDrawNode(m_drawing_tools, this.ControlToCanvas(this.ClientRectangle));
+            } finally {
+                m_cull_to_clip = false;
+                m_paint_region_canvas = null;
+            }
 
             if (m_ca == CanvasAction.ConnectOption) {                       //If you are connecting
                 m_drawing_tools.Pen.Color = this._HighLineColor;
@@ -1484,9 +1652,17 @@ namespace ST.Library.UI.NodeEditor
             m_lst_node_out.Clear(); //Clear the coordinates of the Node beyond the visual area
             m_lst_node_out_selected.Clear();
             foreach (STNode n in this._Nodes) {
-                if (this._ShowBorder) this.OnDrawNodeBorder(dt, n);
-                n.OnDrawNode(dt);                                       //Call Node to draw the main part of itself
-                if (!string.IsNullOrEmpty(n.Mark)) n.OnDrawMark(dt);    //Call Node to draw the Mark area by itself
+                if (!m_cull_to_clip || this.InPaintArea(NodePaintBounds(n), m_rect_clip_canvas, 0f)) {
+                    if (this._ShowBorder) this.OnDrawNodeBorder(dt, n);
+                    //OpenCAGE: a repaint that misses the node's body (the activity ticks along the lines into it) needs
+                    //just its border and pins - far cheaper than all its text and fills
+                    if (m_cull_to_clip && n.CanDrawOutsideBody && !this.InPaintArea(this.NodeBodyBounds(n, 1f), m_rect_clip_canvas, 0f)) {
+                        n.DrawOutsideBody(dt);
+                    } else {
+                        n.OnDrawNode(dt);                                       //Call Node to draw the main part of itself
+                        if (!string.IsNullOrEmpty(n.Mark)) n.OnDrawMark(dt);    //Call Node to draw the Mark area by itself
+                    }
+                }
                 if (!rect.IntersectsWith(n.Rectangle)) {
                     m_lst_node_out.Add(n.Location);                     //Determine whether this Node exceeds the visual area
                     //Selecting an entity selects every node for it, so this marks the ones being hunted for
@@ -1553,6 +1729,13 @@ namespace ST.Library.UI.NodeEditor
             var t = typeof(object);
             float hitInflate = Math.Max(m_p_line_hover.Width * 0.5f, 2f);
             RectangleF visibleCanvas = this.GetVisibleCanvasBounds(50f);
+            //OpenCAGE: the lines the provider lights up are gathered here and drawn over the rest below
+            Func<STNodeOption, STNodeOption, ConnectionActivity> activityProvider = this.ConnectionActivityProvider;
+            m_lst_activity.Clear();
+            this.SetActivityPenWidths();
+            float activityPad = m_activity_glow_width * s_activity_glow_layers[0] / 2f + 2f / this._CanvasScale;
+            RectangleF clip = m_rect_clip_canvas;
+            clip.Inflate(activityPad, activityPad);
             foreach (STNode n in this._Nodes)
             {
                 var allOutputOptions = n.OutputOptions.Cast<STNodeOption>()
@@ -1602,10 +1785,11 @@ namespace ST.Library.UI.NodeEditor
 
                         RectangleF drawBounds = BoundsFromControlPoints(p0, p1, p2, p3, 0f);
                         bool onScreen = drawBounds.IntersectsWith(visibleCanvas);
+                        bool inClip = onScreen && (!m_cull_to_clip || this.InPaintArea(drawBounds, clip, activityPad));
                         
                         if (isVertical)
                         {
-                            if (onScreen)
+                            if (inClip)
                             {
                                 DrawVerticalBezier(g, m_p_line_hover, startPt, endPt, curvature, isTop);
                                 DrawVerticalBezier(g, m_p_line, startPt, endPt, curvature, isTop);
@@ -1623,7 +1807,7 @@ namespace ST.Library.UI.NodeEditor
                         }
                         else
                         {
-                            if (onScreen)
+                            if (inClip)
                             {
                                 DrawHorizontalBezier(g, m_p_line_hover, startPt, endPt, curvature);
                                 DrawHorizontalBezier(g, m_p_line, startPt, endPt, curvature);
@@ -1639,9 +1823,36 @@ namespace ST.Library.UI.NodeEditor
                                 m_dic_gp_info.Add(CreateBezierPath(p0, p1, p2, p3), ci);
                             }
                         }
+
+                        //OpenCAGE: every glowing line on screen counts towards ActivityBounds and InvalidateActivity,
+                        //drawn here or not, so a repaint of part of the canvas cannot shrink what the next animation
+                        //tick repaints
+                        if (activityProvider != null && onScreen)
+                        {
+                            ConnectionActivity activity;
+                            try {
+                                activity = activityProvider(op, v);
+                            } catch (Exception) {
+                                activity = ConnectionActivity.None; //A host fault must not stop the canvas painting
+                            }
+                            if (activity.Glow > 0f || activity.Lit)
+                            {
+                                if (activity.Glow > 0f && m_cull_to_clip)
+                                    this.AddActivityRects(p0, p1, p2, p3, activityPad);
+                                if (inClip)
+                                {
+                                    m_lst_activity.Add(new ActivityLine() {
+                                        P0 = p0, P1 = p1, P2 = p2, P3 = p3,
+                                        Activity = activity,
+                                        UsualColor = m_p_line.Color
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
             }
+            this.DrawConnectionActivity(g);
             m_p_line_hover.Color = this._HighLineColor;
             if (m_gp_hover != null)
             {
@@ -2187,6 +2398,220 @@ namespace ST.Library.UI.NodeEditor
                 if (bFlag) break;
             }
             return m_mi;
+        }
+
+        //OpenCAGE: the activity pens are sized in canvas pixels like every other line, but never thinner on screen
+        //than this, so a page zoomed right out still shows which links are firing. A picture of the canvas
+        //(GetCanvasImage, drawn at its own scale whatever the zoom on screen) gets the widths at 100%.
+        private void SetActivityPenWidths() {
+            float scale = m_cull_to_clip && this._CanvasScale > 0f ? this._CanvasScale : 1f;
+            m_activity_glow_width = Math.Max(9f, 6f / scale);
+            m_p_activity_line.Width = Math.Max(2.5f, 2f / scale);
+            m_p_activity_dash.Width = Math.Max(2f, 1.5f / scale);
+        }
+
+        /* OpenCAGE: draw the lines ConnectionActivityProvider lit up (gathered by OnDrawConnectedLine), over all the
+           others: first every glow, so no glow washes over another active line, then the lines themselves - in their
+           activity colour while they glow, fading to a dim shade of it once only lit (or back to their usual colour
+           if not lit) - then dashes, a light tint of it, marching along the glowing ones the way the activity went. */
+        private void DrawConnectionActivity(Graphics g) {
+            if (m_lst_activity.Count == 0) return;
+            //The glow is a few see-through strokes, widest and faintest first, so it fades out from the line
+            for (int layer = 0; layer < s_activity_glow_layers.Length; layer += 2) {
+                m_p_activity_glow.Width = m_activity_glow_width * s_activity_glow_layers[layer];
+                for (int i = 0; i < m_lst_activity.Count; i++) {
+                    ActivityLine l = m_lst_activity[i];
+                    if (!(l.Activity.Glow > 0f)) continue;
+                    float glow = Math.Min(l.Activity.Glow, 1f);
+                    m_p_activity_glow.Color = Color.FromArgb((int)(s_activity_glow_layers[layer + 1] * glow), this.ActivityColourOf(l.Activity));
+                    g.DrawBezier(m_p_activity_glow, l.P0, l.P1, l.P2, l.P3);
+                }
+            }
+            for (int i = 0; i < m_lst_activity.Count; i++) {
+                ActivityLine l = m_lst_activity[i];
+                float glow = l.Activity.Glow > 0f ? Math.Min(l.Activity.Glow, 1f) : 0f;
+                Color active = this.ActivityColourOf(l.Activity);
+                //(the dim shade is three quarters of the way from the background: a cyan-blue data link stays apart
+                //from the usual blue ones when only lit)
+                m_p_activity_line.Color = LerpColour(l.Activity.Lit ? LerpColour(this.BackColor, active, 0.75f) : l.UsualColor, active, glow);
+                g.DrawBezier(m_p_activity_line, l.P0, l.P1, l.P2, l.P3);
+            }
+            //The dash offset is in pen widths: measuring the phase against the 100% zoom width keeps the dashes
+            //moving the same number of pattern lengths a second whatever their width
+            float period = 0f;
+            for (int i = 0; i < s_activity_dash_pattern.Length; i++) period += s_activity_dash_pattern[i];
+            float offset = (this.ActivityPhase / 2f) % period;
+            if (offset < 0f) offset += period;
+            m_p_activity_dash.DashOffset = period - offset;
+            for (int i = 0; i < m_lst_activity.Count; i++) {
+                ActivityLine l = m_lst_activity[i];
+                if (!(l.Activity.Glow > 0f)) continue;
+                float glow = Math.Min(l.Activity.Glow, 1f);
+                m_p_activity_dash.Color = Color.FromArgb((int)(255 * Math.Min(1f, glow * 2f)), LerpColour(this.ActivityColourOf(l.Activity), Color.White, 0.75f));
+                if (l.Activity.Reverse)
+                    g.DrawBezier(m_p_activity_dash, l.P3, l.P2, l.P1, l.P0);
+                else
+                    g.DrawBezier(m_p_activity_dash, l.P0, l.P1, l.P2, l.P3);
+            }
+        }
+
+        private Color ActivityColourOf(ConnectionActivity activity) {
+            return activity.Color.IsEmpty ? this._ActivityColor : activity.Color;
+        }
+
+        /* OpenCAGE: a glowing line's share of InvalidateActivity, in control coordinates: rectangles along it, each
+           holding one short piece of the curve (the hull of that piece's own control points) padded for the glow, so
+           a tick repaints the line and not the whole box around it. Pieces off screen are left out. */
+        private void AddActivityRects(PointF p0, PointF p1, PointF p2, PointF p3, float padCanvas) {
+            float s = this._CanvasScale, ox = this._CanvasOffsetX, oy = this._CanvasOffsetY;
+            p0 = new PointF(p0.X * s + ox, p0.Y * s + oy);
+            p1 = new PointF(p1.X * s + ox, p1.Y * s + oy);
+            p2 = new PointF(p2.X * s + ox, p2.Y * s + oy);
+            p3 = new PointF(p3.X * s + ox, p3.Y * s + oy);
+            float hull = Distance(p0, p1) + Distance(p1, p2) + Distance(p2, p3);
+            int pieces = Math.Max(1, Math.Min(64, (int)Math.Ceiling(hull / 32f)));
+            float pad = padCanvas * s + 1f;
+            Rectangle client = this.ClientRectangle;
+            PointF a0 = p0, d0 = BezierDerivative(p0, p1, p2, p3, 0f);
+            for (int i = 1; i <= pieces; i++) {
+                float t = i / (float)pieces, third = 1f / (3f * pieces);
+                PointF a1 = BezierPoint(p0, p1, p2, p3, t), d1 = BezierDerivative(p0, p1, p2, p3, t);
+                RectangleF r = BoundsFromControlPoints(a0,
+                    new PointF(a0.X + d0.X * third, a0.Y + d0.Y * third),
+                    new PointF(a1.X - d1.X * third, a1.Y - d1.Y * third), a1, pad);
+                Rectangle ri = Rectangle.FromLTRB((int)Math.Floor(r.Left), (int)Math.Floor(r.Top), (int)Math.Ceiling(r.Right) + 1, (int)Math.Ceiling(r.Bottom) + 1);
+                ri.Intersect(client);
+                if (ri.Width > 0 && ri.Height > 0) m_lst_activity_rects.Add(ri);
+                a0 = a1; d0 = d1;
+            }
+        }
+
+        private static float Distance(PointF a, PointF b) {
+            float dx = b.X - a.X, dy = b.Y - a.Y;
+            return (float)Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        private static PointF BezierPoint(PointF p0, PointF p1, PointF p2, PointF p3, float t) {
+            float u = 1f - t, a = u * u * u, b = 3f * u * u * t, c = 3f * u * t * t, d = t * t * t;
+            return new PointF(a * p0.X + b * p1.X + c * p2.X + d * p3.X, a * p0.Y + b * p1.Y + c * p2.Y + d * p3.Y);
+        }
+
+        private static PointF BezierDerivative(PointF p0, PointF p1, PointF p2, PointF p3, float t) {
+            float u = 1f - t, a = 3f * u * u, b = 6f * u * t, c = 3f * t * t;
+            return new PointF(a * (p1.X - p0.X) + b * (p2.X - p1.X) + c * (p3.X - p2.X), a * (p1.Y - p0.Y) + b * (p2.Y - p1.Y) + c * (p3.Y - p2.Y));
+        }
+
+        //OpenCAGE: ActivityBounds, and the bodies of the nodes the glowing lines reach (InvalidateActivity leaves them out)
+        private void GatherActivityBounds() {
+            Rectangle lines = Rectangle.Empty;
+            for (int i = 0; i < m_lst_activity_rects.Count; i++)
+                lines = i == 0 ? m_lst_activity_rects[0] : Rectangle.Union(lines, m_lst_activity_rects[i]);
+            m_rect_activity = lines;
+            if (lines.IsEmpty) return;
+            //A node's body, with room for anti-aliasing and the pixel a repaint's culling pads by, so a tick never
+            //reaches what makes it draw the whole node (the specks of line behind its rounded corners left out too)
+            foreach (STNode n in this._Nodes) {
+                if (!n.CoversWhatIsUnder) continue;
+                RectangleF area = this.CanvasToControl(this.NodeBodyBounds(n, 2f));
+                Rectangle body = Rectangle.FromLTRB((int)Math.Floor(area.Left), (int)Math.Floor(area.Top), (int)Math.Ceiling(area.Right), (int)Math.Ceiling(area.Bottom));
+                if (body.IntersectsWith(lines)) m_lst_activity_bodies.Add(body);
+            }
+        }
+
+        /* OpenCAGE: the part of a node that only its full drawing paints - its body (the proxy/alias outline on its
+           edge reaching a canvas pixel past it) - padded by some screen pixels; further out it paints only its border
+           and pins and the text beside them (a mark aside), so a repaint that misses this needs just those
+           (OnDrawNodeBorder, STNode.DrawOutsideBody). Lines are drawn under nodes, so what InvalidateActivity leaves
+           out of a glowing line's area here barely shows: the line's last pixels at a pin, under the border. */
+        private RectangleF NodeBodyBounds(STNode n, float screenPixels) {
+            RectangleF body = n.Rectangle;
+            float reach = 1f + screenPixels / this._CanvasScale;
+            body.Inflate(reach, reach);
+            return body;
+        }
+
+        //OpenCAGE: the region Windows repaints, while it handles a WM_PAINT for more than one rectangle (see
+        //m_paint_region). Anything that goes wrong just paints the clip rectangle as before.
+        private bool CaptureUpdateRegion() {
+            IntPtr rgn = IntPtr.Zero;
+            try {
+                rgn = CreateRectRgn(0, 0, 0, 0);
+                if (rgn == IntPtr.Zero || GetUpdateRgn(this.Handle, rgn, false) != COMPLEXREGION) return false;
+                m_paint_region = Region.FromHrgn(rgn);
+                return true;
+            } catch (Exception) {
+                m_paint_region = null;
+                return false;
+            } finally {
+                if (rgn != IntPtr.Zero) DeleteObject(rgn);
+            }
+        }
+
+        //OpenCAGE: clip a paint to the captured region and return its rectangles (control coordinates), or null to
+        //paint the clip rectangle as before - no region, or one that is not what this paint was asked for
+        private RectangleF[] ClipToPaintRegion(Graphics g, Rectangle clip) {
+            if (m_paint_region == null) return null;
+            RectangleF[] rects;
+            try {
+                rects = m_paint_region.GetRegionScans(s_identity);
+            } catch (Exception) {
+                return null;
+            }
+            if (rects.Length < 2) return null;
+            Rectangle bounds = clip;
+            bounds.Inflate(1, 1);
+            for (int i = 0; i < rects.Length; i++)
+                if (!bounds.Contains(Rectangle.Round(rects[i]))) return null;
+            g.SetClip(m_paint_region, CombineMode.Intersect);
+            return rects;
+        }
+
+        //The region's rectangles in canvas coordinates, a pixel bigger all round (anti-aliased edges)
+        private RectangleF[] PaintRectsToCanvas(RectangleF[] rects) {
+            RectangleF[] canvas = new RectangleF[rects.Length];
+            for (int i = 0; i < rects.Length; i++)
+                canvas[i] = new RectangleF(
+                    (rects[i].X - 1f - this._CanvasOffsetX) / this._CanvasScale,
+                    (rects[i].Y - 1f - this._CanvasOffsetY) / this._CanvasScale,
+                    (rects[i].Width + 2f) / this._CanvasScale,
+                    (rects[i].Height + 2f) / this._CanvasScale);
+            return canvas;
+        }
+
+        //OpenCAGE: whether a canvas area (padded by pad) crosses what this paint repaints: the clip (already padded)
+        //and, when the paint is of several rectangles, one of them
+        private bool InPaintArea(RectangleF area, RectangleF paddedClip, float pad) {
+            if (!area.IntersectsWith(paddedClip)) return false;
+            RectangleF[] rects = m_paint_region_canvas;
+            if (rects == null) return true;
+            area.Inflate(pad, pad);
+            for (int i = 0; i < rects.Length; i++)
+                if (rects[i].IntersectsWith(area)) return true;
+            return false;
+        }
+
+        private static Color LerpColour(Color from, Color to, float t) {
+            if (t <= 0f) return Color.FromArgb(255, from);
+            if (t >= 1f) return Color.FromArgb(255, to);
+            return Color.FromArgb(
+                (int)(from.R + (to.R - from.R) * t),
+                (int)(from.G + (to.G - from.G) * t),
+                (int)(from.B + (to.B - from.B) * t));
+        }
+
+        //OpenCAGE: all a node can paint - its border, mark, pins and the delay text beside them (estimated as
+        //STNode.Invalidate does, generously) - so a repaint of part of the canvas can leave out the nodes that miss it
+        private static RectangleF NodePaintBounds(STNode n) {
+            int left = 20, right = 20;
+            for (int i = 0; i < n.InputOptions.Count; i++) {
+                string text = n.InputOptions[i].LeftText;
+                if (!string.IsNullOrEmpty(text)) left = Math.Max(left, text.Length * 12 + 25);
+            }
+            for (int i = 0; i < n.OutputOptions.Count; i++) {
+                string text = n.OutputOptions[i].RightText;
+                if (!string.IsNullOrEmpty(text)) right = Math.Max(right, text.Length * 12 + 25);
+            }
+            return RectangleF.FromLTRB(n.Left - left, n.Top - 40, n.Right + right, n.Bottom + 40);
         }
 
         private void DrawHorizontalBezier(Graphics g, Pen p, PointF ptStart, PointF ptEnd, float f) {
