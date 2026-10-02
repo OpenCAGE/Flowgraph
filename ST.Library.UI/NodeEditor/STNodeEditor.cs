@@ -1104,7 +1104,9 @@ namespace ST.Library.UI.NodeEditor
                 return;
             }
 
-            if (nfi.NodeOption != null) {                                   //If you click the option connection point
+            //OpenCAGE: only the left button connects pins. Any other button goes on as if the pin were not there - a right-click is
+            //for the pin's context menu, the middle button pans - and so, as anywhere else, drops a connection in progress
+            if (nfi.NodeOption != null && e.Button == MouseButtons.Left) {  //If you click the option connection point
                 if (wasConnecting && previousOptionDown != null && previousOptionDown != nfi.NodeOption)
                 {
                     if (previousOptionDown.Location == PinLocation.Left)
