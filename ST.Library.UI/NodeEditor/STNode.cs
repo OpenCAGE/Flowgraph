@@ -1172,21 +1172,71 @@ namespace ST.Library.UI.NodeEditor
             this.OnDrawTitle(dt);
             this.OnDrawBody(dt);
 
-            if (this.Entity != null) {
-                if (this.Entity.variant == CATHODE.Scripting.EntityVariant.PROXY || this.Entity.variant == CATHODE.Scripting.EntityVariant.ALIAS) {
-                    Color outlineColor = this.Entity.variant == CATHODE.Scripting.EntityVariant.PROXY ? Color.Purple : Color.DodgerBlue;
-                    using (Pen p = new Pen(outlineColor, 1.5f)) {
-                        p.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
-                        Rectangle bounds = new Rectangle(this.Left, this.Top, this.Width, this.Height);
-                        if (this.Owner?.RoundedCornerRadius == -1) {
-                            dt.Graphics.DrawRectangle(p, bounds);
-                        } else {
-                            RoundedCornerUtils.DrawRoundedRectangle(dt.Graphics, p, bounds, this.Owner?.RoundedCornerRadius ?? 0);
-                        }
-                    }
+            this.DrawVariantOutline(dt, 1.5f);
+        }
+
+        // OpenCAGE: a proxy's (purple) or alias's (blue) dashed outline, round the whole node
+        private void DrawVariantOutline(DrawingTools dt, float width) {
+            if (this.Entity == null) return;
+            if (this.Entity.variant != CATHODE.Scripting.EntityVariant.PROXY && this.Entity.variant != CATHODE.Scripting.EntityVariant.ALIAS) return;
+            Color outlineColor = this.Entity.variant == CATHODE.Scripting.EntityVariant.PROXY ? Color.Purple : Color.DodgerBlue;
+            using (Pen p = new Pen(outlineColor, width)) {
+                p.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+                Rectangle bounds = new Rectangle(this.Left, this.Top, this.Width, this.Height);
+                if (this.Owner?.RoundedCornerRadius == -1) {
+                    dt.Graphics.DrawRectangle(p, bounds);
+                } else {
+                    RoundedCornerUtils.DrawRoundedRectangle(dt.Graphics, p, bounds, this.Owner?.RoundedCornerRadius ?? 0);
                 }
             }
+        }
 
+        /// <summary>
+        /// OpenCAGE: the icon the host shows for this node when the editor is zoomed out past NodeIconZoom (the host's
+        /// own number - OpenCAGE's EditorIcon - which its NodeIconProvider turns into an image). -1 for none.
+        /// </summary>
+        [System.ComponentModel.Browsable(false)]
+        public int IconId { get; set; } = -1;
+
+        /// <summary>
+        /// OpenCAGE: the node zoomed out too far for its text to be read (see STNodeEditor.NodeIconZoom): the whole node
+        /// in its title colour with its icon over the middle, its pins' dots (where its lines meet it) and a proxy's or
+        /// alias's outline. The icon is drawn at its own size in screen pixels; null draws the node without one.
+        /// </summary>
+        internal void DrawAsIcon(DrawingTools dt, Image icon, float scale) {
+            Graphics g = dt.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+            Rectangle bounds = new Rectangle(this.Left, this.Top, this.Width, this.Height);
+            dt.SolidBrush.Color = this._TitleColor;
+            if (this.Owner?.RoundedCornerRadius == -1) g.FillRectangle(dt.SolidBrush, bounds);
+            else RoundedCornerUtils.FillRoundedRectangle(g, dt.SolidBrush, bounds, this.Owner?.RoundedCornerRadius ?? 0);
+            DrawZoneStripes(g, bounds);
+
+            if (icon != null && scale > 0f) {
+                //At its own size on screen: the host made it for that, so it is neither blurred nor blocky
+                float size = icon.Width / scale;
+                RectangleF at = new RectangleF(this.Left + (this.Width - size) / 2f, this.Top + (this.Height - size) / 2f, size, size);
+                System.Drawing.Drawing2D.InterpolationMode oldMode = g.InterpolationMode;
+                System.Drawing.Drawing2D.PixelOffsetMode oldOffset = g.PixelOffsetMode;
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bilinear;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                g.DrawImage(icon, at);
+                g.InterpolationMode = oldMode;
+                g.PixelOffsetMode = oldOffset;
+            }
+
+            this.DrawDots(dt);
+            this.DrawVariantOutline(dt, Math.Max(1.5f, 1.5f / scale));
+        }
+
+        /// <summary>OpenCAGE: just the pins' dots - all a zoomed-out node (DrawAsIcon) paints outside its body.</summary>
+        internal void DrawDots(DrawingTools dt) {
+            foreach (STNodeOptionCollection options in new[] { this.TopOptions, this.InputOptions, this.OutputOptions, this.BottomOptions }) {
+                foreach (STNodeOption op in options) {
+                    if (op == STNodeOption.Empty) continue;
+                    this.OnDrawOptionDot(dt, op);
+                }
+            }
         }
         /// <summary>
         /// Draw the Node header part.

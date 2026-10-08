@@ -422,6 +422,38 @@ namespace ST.Library.UI.NodeEditor
         public Func<STNodeOption, OptionBadge> OptionBadgeProvider { get; set; }
 
         /// <summary>
+        /// OpenCAGE: below this zoom a node is drawn as its icon (NodeIconProvider's) on its title colour instead of its
+        /// title, pins and text, which are too small to read there - the page is easier to find your way round from a
+        /// distance. 0 (the default) never does. A picture of the canvas (GetCanvasImage) always draws nodes in full.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public float NodeIconZoom { get; set; }
+
+        /// <summary>
+        /// OpenCAGE: the icon a zoomed-out node shows (see NodeIconZoom), asked with the node and the icon's size in
+        /// screen pixels. The image is the host's to keep (the editor never disposes it); null draws the node in full.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Func<STNode, int, Image> NodeIconProvider { get; set; }
+
+        //OpenCAGE: whether this paint draws nodes as their icons - only on screen (a canvas picture is drawn at its own scale)
+        private bool DrawsNodesAsIcons {
+            get { return m_cull_to_clip && this.NodeIconZoom > 0f && this.NodeIconProvider != null && this._CanvasScale < this.NodeIconZoom; }
+        }
+
+        //OpenCAGE: a zoomed-out node's icon, in screen pixels: most of the node's shorter side, or none when that is too
+        //small to make anything out
+        private Image NodeIcon(STNode node, float scale) {
+            int pixels = (int)(Math.Min(node.Width, node.Height) * 0.72f * scale);
+            if (pixels < 7) return null;
+            try {
+                return this.NodeIconProvider(node, Math.Min(pixels, 128));
+            } catch (Exception) {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// OpenCAGE: how far the dashes on glowing lines have marched, in canvas pixels at 100% zoom. The host
         /// advances it to animate them; setting it does not repaint.
         /// </summary>
@@ -1653,12 +1685,23 @@ namespace ST.Library.UI.NodeEditor
         protected virtual void OnDrawNode(DrawingTools dt, Rectangle rect) {
             m_lst_node_out.Clear(); //Clear the coordinates of the Node beyond the visual area
             m_lst_node_out_selected.Clear();
+            bool asIcons = this.DrawsNodesAsIcons;
+            float scale = this._CanvasScale;
+            //Zoomed out, the selected, hovered and active rings are kept a couple of pixels wide on screen, or they vanish
+            float ringWidth = asIcons ? Math.Max(2f, 2.5f / scale) : 2f;
+            m_pen_border_active.Width = m_pen_border_hover.Width = m_pen_border_selected.Width = ringWidth;
             foreach (STNode n in this._Nodes) {
                 if (!m_cull_to_clip || this.InPaintArea(NodePaintBounds(n), m_rect_clip_canvas, 0f)) {
                     if (this._ShowBorder) this.OnDrawNodeBorder(dt, n);
+                    //OpenCAGE: zoomed out, a node the host gave an icon (of the plain kind, see CanDrawOutsideBody) is
+                    //that icon on its colour; a repaint that misses its body needs only its dots
+                    if (asIcons && n.IconId >= 0 && n.CanDrawOutsideBody) {
+                        if (!this.InPaintArea(this.NodeBodyBounds(n, 1f), m_rect_clip_canvas, 0f)) n.DrawDots(dt);
+                        else n.DrawAsIcon(dt, this.NodeIcon(n, scale), scale);
+                    }
                     //OpenCAGE: a repaint that misses the node's body (the activity ticks along the lines into it) needs
                     //just its border and pins - far cheaper than all its text and fills
-                    if (m_cull_to_clip && n.CanDrawOutsideBody && !this.InPaintArea(this.NodeBodyBounds(n, 1f), m_rect_clip_canvas, 0f)) {
+                    else if (m_cull_to_clip && n.CanDrawOutsideBody && !this.InPaintArea(this.NodeBodyBounds(n, 1f), m_rect_clip_canvas, 0f)) {
                         n.DrawOutsideBody(dt);
                     } else {
                         n.OnDrawNode(dt);                                       //Call Node to draw the main part of itself
@@ -1709,8 +1752,10 @@ namespace ST.Library.UI.NodeEditor
 
                 if (highlight)
                 {
-                    borderRect.Inflate(2, 2);
-                    RoundedCornerUtils.DrawRoundedRectangle(dt.Graphics, pen_border, borderRect, mRoundedCornerRadius + 2);
+                    //OpenCAGE: zoomed out the ring is wider (see OnDrawNode): out from the node by half of it, so the node doesn't cover it
+                    int grow = Math.Max(2, (int)Math.Ceiling(pen_border.Width / 2f));
+                    borderRect.Inflate(grow, grow);
+                    RoundedCornerUtils.DrawRoundedRectangle(dt.Graphics, pen_border, borderRect, mRoundedCornerRadius + grow);
                 }
                 else
                 {
