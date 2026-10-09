@@ -541,6 +541,17 @@ namespace ST.Library.UI.NodeEditor
             set { _minWidth = value; }
         }
 
+        private bool _sizeToTitle = false;
+        /// <summary>
+        /// OpenCAGE: when true the node is made wide enough for its title and subtitle (and one title bar marker) rather
+        /// than clipping them - for graphs whose node names carry the meaning, such as animation trees.
+        /// </summary>
+        public bool SizeToTitle
+        {
+            get { return _sizeToTitle; }
+            set { _sizeToTitle = value; }
+        }
+
         private STNodeControlCollection _Controls;
         /// <summary>
         /// Get the collection of controls contained in Node.
@@ -2045,6 +2056,16 @@ namespace ST.Library.UI.NodeEditor
             // Final width is the maximum of all calculated widths
             int nWidth = (int)Math.Max(Math.Max(topPinsWidth, bottomPinsWidth), verticalPinTextWidth);
             //if (titleWidth > nWidth) nWidth = titleWidth;
+
+            // OpenCAGE: room for the whole title when asked - the title text sits 10 px in and stops 5 px short of the
+            // markers, and one marker (13 px circle + 4 px gap) is allowed for so showing one never clips the name
+            if (this._sizeToTitle) {
+                float titleText = 0;
+                if (!string.IsNullOrEmpty(this._Title)) titleText = g.MeasureString(this._Title, this._FontBold).Width;
+                if (!string.IsNullOrEmpty(this._SubTitle)) titleText = Math.Max(titleText, g.MeasureString(this._SubTitle, this._Font).Width);
+                int titleWidth = (int)Math.Ceiling(titleText) + 15 + 17 + 6;
+                if (titleWidth > nWidth) nWidth = titleWidth;
+            }
             
             if (this.MinWidth > nWidth) {
                 nWidth = this.MinWidth;
