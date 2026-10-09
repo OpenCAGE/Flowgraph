@@ -1213,16 +1213,15 @@ namespace ST.Library.UI.NodeEditor
             DrawZoneStripes(g, bounds);
 
             if (icon != null && scale > 0f) {
-                //At its own size on screen: the host made it for that, so it is neither blurred nor blocky
-                float size = icon.Width / scale;
-                RectangleF at = new RectangleF(this.Left + (this.Width - size) / 2f, this.Top + (this.Height - size) / 2f, size, size);
-                System.Drawing.Drawing2D.InterpolationMode oldMode = g.InterpolationMode;
-                System.Drawing.Drawing2D.PixelOffsetMode oldOffset = g.PixelOffsetMode;
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bilinear;
+                //At its own size on whole screen pixels: the host made it for that, so it is neither blurred nor blocky
+                PointF[] corner = { new PointF(this.Left + (this.Width - icon.Width / scale) / 2f, this.Top + (this.Height - icon.Height / scale) / 2f) };
+                g.TransformPoints(System.Drawing.Drawing2D.CoordinateSpace.Device, System.Drawing.Drawing2D.CoordinateSpace.World, corner);
+                System.Drawing.Drawing2D.GraphicsState state = g.Save();
+                g.ResetTransform(); //the clip is held in device space, so a partial repaint stays clipped
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
                 g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                g.DrawImage(icon, at);
-                g.InterpolationMode = oldMode;
-                g.PixelOffsetMode = oldOffset;
+                g.DrawImage(icon, new Rectangle((int)Math.Round(corner[0].X), (int)Math.Round(corner[0].Y), icon.Width, icon.Height));
+                g.Restore(state);
             }
 
             this.DrawDots(dt);
@@ -2512,7 +2511,11 @@ namespace ST.Library.UI.NodeEditor
                 this._Height + 60
             );
             
-            this._Owner.Invalidate(this._Owner.CanvasToControl(invalidateRect));
+            //OpenCAGE: zoomed out, the selected/active ring reaches ~3 screen px past the node (STNodeEditor.OnDrawNode), plus
+            //anti-aliasing, and CanvasToControl truncates X and Width: pad in screen pixels so a deselect clears all of it
+            Rectangle screenRect = this._Owner.CanvasToControl(invalidateRect);
+            screenRect.Inflate(4, 4);
+            this._Owner.Invalidate(screenRect);
         }
         public void Invalidate(Rectangle rect) {
             rect.X += this._Left;
