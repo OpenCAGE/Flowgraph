@@ -436,10 +436,20 @@ namespace ST.Library.UI.NodeEditor
         [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Func<STNode, int, Image> NodeIconProvider { get; set; }
 
+        //OpenCAGE: zoomed out past NodeIconZoom, where nodes show as their icons on screen
+        private bool ZoomedOutToIcons {
+            get { return this.NodeIconZoom > 0f && this.NodeIconProvider != null && this._CanvasScale < this.NodeIconZoom; }
+        }
+
         //OpenCAGE: whether this paint draws nodes as their icons - only on screen (a canvas picture is drawn at its own scale)
         private bool DrawsNodesAsIcons {
-            get { return m_cull_to_clip && this.NodeIconZoom > 0f && this.NodeIconProvider != null && this._CanvasScale < this.NodeIconZoom; }
+            get { return m_cull_to_clip && this.ZoomedOutToIcons; }
         }
+
+        //OpenCAGE: the fonts of the hovered node's name (see OnDrawHoveredNodeName), made from the Font they were made for
+        private Font m_font_hover_name;
+        private Font m_font_hover_detail;
+        private Font m_font_hover_from;
 
         //OpenCAGE: a zoomed-out node's icon, in screen pixels: most of the node's shorter side, or none when that is too
         //small to make anything out
@@ -975,6 +985,10 @@ namespace ST.Library.UI.NodeEditor
                 m_alert_timer.Dispose();
                 m_alert_timer = null;
             }
+            //(made again the next time they're drawn)
+            if (m_font_hover_name != null) m_font_hover_name.Dispose();
+            if (m_font_hover_detail != null) m_font_hover_detail.Dispose();
+            m_font_hover_name = m_font_hover_detail = m_font_hover_from = null;
             base.OnHandleDestroyed(e);
         }
 
@@ -1083,6 +1097,8 @@ namespace ST.Library.UI.NodeEditor
                     if (!string.IsNullOrEmpty(m_find.Mark)) this.OnDrawMark(m_drawing_tools);
                     break;
             }
+            //OpenCAGE: zoomed out, the name of the node under the mouse, readable over the nodes around it
+            if (this.ZoomedOutToIcons) this.OnDrawHoveredNodeName(m_drawing_tools);
 
             if (this._ShowLocation) this.OnDrawNodeOutLocation(m_drawing_tools, this.Size, m_lst_node_out);
             this.OnDrawAlert(g);
@@ -1944,6 +1960,65 @@ namespace ST.Library.UI.NodeEditor
             for (int i = 0; i < m_find.MarkLines.Length; i++) {             //Draw text
                 rect.Y = nY + i * (this.Font.Height + 4);
                 g.DrawString(m_find.MarkLines[i], this.Font, dt.SolidBrush, rect, m_sf);
+            }
+        }
+        /// <summary>
+        /// OpenCAGE: zoomed out past NodeIconZoom, where a node's own text is too small to read, the name of the node under
+        /// the mouse (and its subtitle under it, smaller): large and bold on a half see-through backing, just above the
+        /// node - below it when there's no room above - and over any nodes there. Not while a link or a box is being drawn.
+        /// Drawn in control coordinates, last, so a repaint of part of the view redraws its part of the name too.
+        /// </summary>
+        /// <param name="dt">Drawing tools</param>
+        protected virtual void OnDrawHoveredNodeName(DrawingTools dt) {
+            STNode node = this._HoverNode;
+            if (node == null || node.Owner != this || !m_mouse_in_control) return;
+            if (m_ca != CanvasAction.None && m_ca != CanvasAction.MoveNode) return;
+            string name = node.Title, detail = node.SubTitle;
+            if (string.IsNullOrWhiteSpace(name)) {
+                name = detail;
+                detail = null;
+            }
+            if (string.IsNullOrWhiteSpace(name)) return;
+            if (string.IsNullOrWhiteSpace(detail)) detail = null;
+
+            if (m_font_hover_from != this.Font) {
+                if (m_font_hover_name != null) m_font_hover_name.Dispose();
+                if (m_font_hover_detail != null) m_font_hover_detail.Dispose();
+                m_font_hover_name = new Font(this.Font.FontFamily, this.Font.Size * 1.75f, FontStyle.Bold, this.Font.Unit);
+                m_font_hover_detail = new Font(this.Font.FontFamily, this.Font.Size * 1.15f, FontStyle.Regular, this.Font.Unit);
+                m_font_hover_from = this.Font;
+            }
+
+            const int padX = 8, padY = 4, gap = 6, margin = 4;
+            Graphics g = dt.Graphics;
+            using (StringFormat sf = new StringFormat(StringFormatFlags.NoWrap)) {
+                sf.Trimming = StringTrimming.EllipsisCharacter;
+                sf.LineAlignment = StringAlignment.Center;
+                sf.Alignment = StringAlignment.Center;
+
+                SizeF nameSize = g.MeasureString(name, m_font_hover_name, PointF.Empty, sf);
+                SizeF detailSize = detail == null ? SizeF.Empty : g.MeasureString(detail, m_font_hover_detail, PointF.Empty, sf);
+                //A name wider than the view is cut short with "..."
+                int textWidth = Math.Min((int)Math.Ceiling(Math.Max(nameSize.Width, detailSize.Width)), this.Width - 2 * (margin + padX));
+                if (textWidth < 16) return;
+                int nameHeight = (int)Math.Ceiling(nameSize.Height), detailHeight = (int)Math.Ceiling(detailSize.Height);
+
+                Rectangle around = this.CanvasToControl(node.Rectangle);
+                Rectangle box = new Rectangle(0, 0, textWidth + 2 * padX, nameHeight + detailHeight + 2 * padY);
+                box.X = around.X + (around.Width - box.Width) / 2;
+                box.Y = around.Y - gap - box.Height;
+                if (box.Y < margin) box.Y = around.Bottom + gap;
+                box.X = Math.Max(margin, Math.Min(box.X, this.Width - margin - box.Width));
+                box.Y = Math.Max(margin, Math.Min(box.Y, this.Height - margin - box.Height));
+
+                dt.SolidBrush.Color = Color.FromArgb(128, Color.Black);
+                RoundedCornerUtils.FillRoundedRectangle(g, dt.SolidBrush, box, 4);
+                dt.SolidBrush.Color = Color.White;
+                g.DrawString(name, m_font_hover_name, dt.SolidBrush, new RectangleF(box.X + padX, box.Y + padY, textWidth, nameHeight), sf);
+                if (detail != null) {
+                    dt.SolidBrush.Color = Color.FromArgb(215, 215, 215);
+                    g.DrawString(detail, m_font_hover_detail, dt.SolidBrush, new RectangleF(box.X + padX, box.Y + padY + nameHeight, textWidth, detailHeight), sf);
+                }
             }
         }
         /// <summary>
