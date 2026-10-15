@@ -747,6 +747,8 @@ namespace ST.Library.UI.NodeEditor
         private bool m_external_event_raising_enabled = true;       //External API control for SelectedChanged event raising
         private bool m_internal_suppress_selected_changed = false;  //Internal logic to suppress events during drags and multi-selections
         private Point m_mouse_down_location;                        //Mouse location when mouse down occurred
+        private STNode m_node_pressed = null;                       //The node a plain left press landed on: releasing selects it, dragged or not
+        private bool m_collapse_on_release = false;                 //It was one of several selected: released without a drag, it is selected alone
         private Dictionary<STNode, Point> m_original_node_positions = new Dictionary<STNode, Point>(); //Original node positions at mouse down
         private Pen m_p_line = new Pen(Color.Cyan, 2f);             //Used to draw connected lines
         private Pen m_p_line_hover = new Pen(Color.Cyan, 4f);       //Used to draw the line when the mouse is hovering
@@ -1113,6 +1115,8 @@ namespace ST.Library.UI.NodeEditor
             // Initialize drag tracking flags
             m_has_dragged = false;
             m_internal_suppress_selected_changed = false;
+            m_node_pressed = null;
+            m_collapse_on_release = false;
             m_original_node_positions.Clear();
             m_nodes_being_dragged.Clear();
             
@@ -1208,7 +1212,10 @@ namespace ST.Library.UI.NodeEditor
                     }
                     else
                     {
-                        // Single click - clear other selections and select this node
+                        // Single click - clear other selections and select this node. One of several selected keeps the
+                        // others for now (a drag moves them all); released without a drag, it is selected alone.
+                        m_node_pressed = nfi.Node;
+                        m_collapse_on_release = nfi.Node.IsSelected && this.GetSelectedNode().Length > 1;
                         if (!nfi.Node.IsSelected)
                         {
                             // Clear other selections - use visual selection to avoid events
@@ -1288,10 +1295,11 @@ namespace ST.Library.UI.NodeEditor
             m_pt_in_canvas.X = ((e.X - this._CanvasOffsetX) / this._CanvasScale);
             m_pt_in_canvas.Y = ((e.Y - this._CanvasOffsetY) / this._CanvasScale);
 
-            // Check if user has dragged (moved mouse more than a few pixels)
+            // A drag starts once the pointer has gone further from the press than the system's drag distance (at least 4 px)
+            // in either direction: a click that wobbles less is still a click, and moves nothing
             if (!m_has_dragged && e.Button == MouseButtons.Left) {
-                int dragDistance = Math.Abs(e.X - m_mouse_down_location.X) + Math.Abs(e.Y - m_mouse_down_location.Y);
-                if (dragDistance > 3) { // 3 pixel threshold for drag detection
+                int threshold = Math.Max(4, Math.Max(SystemInformation.DragSize.Width, SystemInformation.DragSize.Height));
+                if (Math.Abs(e.X - m_mouse_down_location.X) > threshold || Math.Abs(e.Y - m_mouse_down_location.Y) > threshold) {
                     m_has_dragged = true;
                     m_internal_suppress_selected_changed = true; // Don't raise SelectedChanged if user dragged
                     
@@ -1324,7 +1332,7 @@ namespace ST.Library.UI.NodeEditor
             if (e.Button == MouseButtons.Left) {    //If the left mouse button is clicked, the behavior is judged
                 m_gp_hover = null;
                 switch (m_ca) {
-                    case CanvasAction.MoveNode: this.MoveNode(e.Location); return;  //Current mobile node
+                    case CanvasAction.MoveNode: if (m_has_dragged) this.MoveNode(e.Location); return;  //Current mobile node (once it is a drag)
                     case CanvasAction.ConnectOption: this.Invalidate(); return;     //Currently connecting
                     case CanvasAction.SelectRectangle:                              //Currently selected
                         m_rect_select.X = m_pt_down_in_canvas.X < m_pt_in_canvas.X ? m_pt_down_in_canvas.X : m_pt_in_canvas.X;
@@ -1455,11 +1463,24 @@ namespace ST.Library.UI.NodeEditor
                 wasDragOperation = true;
             }
             
-            // Only raise SelectedChanged if this wasn't a drag operation and we're not suppressing events
-            if (!wasDragOperation && m_external_event_raising_enabled && !m_internal_suppress_selected_changed)
+            // A plain left press on a node selects that node, dragged or not - what is highlighted is what is selected. One of
+            // several selected, released without a drag, is selected alone. Anything else (a click on empty canvas) is announced
+            // only when it was not a drag. Only the left button selects, so only its release announces.
+            bool leftRelease = e.Button == MouseButtons.Left;
+            if (leftRelease && m_node_pressed != null && m_collapse_on_release && !wasDragOperation)
+            {
+                foreach (var n in m_hs_node_selected.ToArray())
+                    if (n != m_node_pressed)
+                        this.SetVisualSelection(n, false);
+                this.SetActiveNode(m_node_pressed);
+            }
+            bool announce = m_node_pressed != null || (!wasDragOperation && !m_internal_suppress_selected_changed);
+            if (leftRelease && announce && m_external_event_raising_enabled)
             {
                 this.OnSelectedChanged(EventArgs.Empty);
             }
+            m_node_pressed = null;
+            m_collapse_on_release = false;
             
             // Nodes that were dragged stay selected: moving a selection is not a reason to lose it,
             // and dropping it here meant a Delete after nudging nodes only caught the one under the
