@@ -728,7 +728,7 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
-        private Color _ZoneColour = Color.Empty;
+        private Color[] _ZoneColours = new Color[0];
         /// <summary>
         /// OpenCAGE: the colour of the zone the entity goes with (the colour the viewport draws that zone
         /// in), or Color.Empty for none. Drawn as diagonal stripes over the node, under its text and pins,
@@ -736,28 +736,84 @@ namespace ST.Library.UI.NodeEditor
         /// selected or not, and the selection outline stays what it was.
         /// </summary>
         public Color ZoneColour {
-            get { return _ZoneColour; }
+            get { return _ZoneColours.Length == 0 ? Color.Empty : _ZoneColours[0]; }
+        }
+        /// <summary>
+        /// OpenCAGE: every zone the entity goes with, the first being the one the viewport draws it in. Zones overlap - a
+        /// room's zone usually takes in the corridors either side of it - so an entity can be in several, and the stripes take
+        /// turns in each zone's colour: a Zone node's colour is then on every entity it lists, whichever zone the viewport
+        /// shows that entity in.
+        /// </summary>
+        public IReadOnlyList<Color> ZoneColours {
+            get { return _ZoneColours; }
         }
         /// <summary>OpenCAGE: set the zone this node goes with, Color.Empty for none.</summary>
         /// <returns>Whether anything changed, and the node wants repainting.</returns>
         public bool SetZone(Color colour) {
-            if (_ZoneColour == colour) return false;
-            _ZoneColour = colour;
+            return SetZones(colour.IsEmpty ? null : new[] { colour });
+        }
+        /// <summary>OpenCAGE: set every zone this node goes with (the viewport's first), null or none for no zone.</summary>
+        /// <returns>Whether anything changed, and the node wants repainting.</returns>
+        public bool SetZones(IReadOnlyList<Color> colours) {
+            int count = colours == null ? 0 : colours.Count;
+            if (count == _ZoneColours.Length) {
+                bool same = true;
+                for (int i = 0; i < count && same; i++)
+                    same = colours[i] == _ZoneColours[i];
+                if (same) return false;
+            }
+            _ZoneColours = new Color[count];
+            for (int i = 0; i < count; i++)
+                _ZoneColours[i] = colours[i];
+            _ZoneStripeTexture?.Dispose();
+            _ZoneStripeTexture = null;
             return true;
+        }
+        //Several zones' stripes in turn: one tile of them, made when the colours change
+        private Bitmap _ZoneStripeTexture;
+        //The hatch below draws a stripe 3 pixels wide every 8 (WideUpwardDiagonal); the colours here take turns at the same
+        //spacing, so a node in two zones reads as the same stripes as a node in one, in two colours
+        private const int ZoneStripePeriod = 8, ZoneStripeWidth = 3;
+        private Bitmap ZoneStripeTexture() {
+            if (_ZoneStripeTexture != null) return _ZoneStripeTexture;
+            int size = ZoneStripePeriod * _ZoneColours.Length;
+            Bitmap tile = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) {
+                    //upward diagonals: x + y is constant along one
+                    int along = (x + y) % size;
+                    if (along % ZoneStripePeriod >= ZoneStripeWidth) continue;
+                    tile.SetPixel(x, y, Color.FromArgb(150, _ZoneColours[along / ZoneStripePeriod]));
+                }
+            }
+            return _ZoneStripeTexture = tile;
         }
         // OpenCAGE: stripe one part of the node in its zone colour, clipped to the node's rounded outline. Called
         // once that part's background is down and before anything is drawn on it, so text and pins stay clear.
         // The hatch is anchored to the canvas, not the rectangle, so the parts line up.
         private void DrawZoneStripes(Graphics g, Rectangle part) {
-            if (_ZoneColour.IsEmpty) return;
+            if (_ZoneColours.Length == 0) return;
             GraphicsState state = g.Save();
             int radius = this.Owner?.RoundedCornerRadius ?? -1;
             if (radius >= 0) {
                 using (GraphicsPath outline = RoundedCornerUtils.RoundedRect(new Rectangle(this.Left, this.Top, this.Width, this.Height), radius))
                     g.SetClip(outline, CombineMode.Intersect);
             }
-            using (HatchBrush stripes = new HatchBrush(HatchStyle.WideUpwardDiagonal, Color.FromArgb(150, _ZoneColour), Color.Transparent))
-                g.FillRectangle(stripes, part);
+            if (_ZoneColours.Length == 1) {
+                using (HatchBrush stripes = new HatchBrush(HatchStyle.WideUpwardDiagonal, Color.FromArgb(150, _ZoneColours[0]), Color.Transparent))
+                    g.FillRectangle(stripes, part);
+            } else {
+                //A hatch is drawn in screen pixels whatever the zoom; the tile is held to the same by undoing the canvas's
+                //transform on the brush, so both kinds of stripe stay the same width as the canvas zooms
+                using (TextureBrush stripes = new TextureBrush(ZoneStripeTexture(), WrapMode.Tile))
+                using (Matrix toScreen = g.Transform.Clone()) {
+                    if (toScreen.IsInvertible) {
+                        toScreen.Invert();
+                        stripes.Transform = toScreen;
+                    }
+                    g.FillRectangle(stripes, part);
+                }
+            }
             g.Restore(state);
         }
 
