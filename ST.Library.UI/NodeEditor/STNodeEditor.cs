@@ -1024,6 +1024,13 @@ namespace ST.Library.UI.NodeEditor
             } catch { /*add code*/ }
         }
 
+        //OpenCAGE: OnPaint clears what it paints to the back colour before anything else, so the control's own fill of the
+        //background (a GDI fill through the paint's DC, about a tenth of a paint) is covered straight away. Only a back colour
+        //that lets something show through still gets it.
+        protected override void OnPaintBackground(PaintEventArgs e) {
+            if (this.BackColor.A != 255) base.OnPaintBackground(e);
+        }
+
         protected override void OnPaint(PaintEventArgs e) {
             base.OnPaint(e);
             Graphics g = e.Graphics;
@@ -1382,7 +1389,64 @@ namespace ST.Library.UI.NodeEditor
                 }
             }
             if (m_ca == CanvasAction.ConnectOption) bRedraw = true;
-            if (bRedraw) this.Invalidate();
+            //OpenCAGE: a change of hover repaints only what the hover marks - where its marks are on screen, and where the new ones
+            //go - rather than the whole page, which is drawn the same either way. Zoomed out (the hovered node's name is over the
+            //page) and while a line is being drawn, the whole page as before.
+            if (bRedraw && (m_ca == CanvasAction.ConnectOption || this.ZoomedOutToIcons || !this.InvalidateHoverMarks())) this.Invalidate();
+        }
+
+        //OpenCAGE: where the hover's own marks - a node's hover ring, a hovered line's highlight - have been drawn on screen since the
+        //last change of hover repainted them (control coordinates; see OnMouseMove). Kept as they are drawn rather than worked out
+        //from the hover, which can change without a repaint (a press on a node clears the hovered line), so a mark already on screen
+        //is never missed.
+        private readonly HashSet<Rectangle> m_hover_marks = new HashSet<Rectangle>();
+
+        //A mark drawn, when it is on screen (m_cull_to_clip: a paint of the control, not a canvas picture at its own scale)
+        private void NoteHoverMark(Rectangle area) {
+            if (m_cull_to_clip && m_hover_marks.Count <= 64) m_hover_marks.Add(area);
+        }
+
+        //Repaint where the hover's marks are and where the new ones go. False when it can't say (too many marks, a path gone),
+        //for the whole page to be repainted instead.
+        private bool InvalidateHoverMarks() {
+            if (!this.IsHandleCreated || m_hover_marks.Count > 64) {
+                m_hover_marks.Clear();
+                return false;
+            }
+            try {
+                if (this._HoverNode != null) m_hover_marks.Add(this.HoverRingArea(this._HoverNode));
+                if (m_gp_hover != null) m_hover_marks.Add(this.HoverLinkArea(m_gp_hover));
+            } catch (Exception) {
+                m_hover_marks.Clear();
+                return false;
+            }
+            foreach (Rectangle area in m_hover_marks) this.Invalidate(area);
+            m_hover_marks.Clear();
+            return true;
+        }
+
+        //All a node's hover ring can cover on screen: its border drawn out by the ring (or a square border's frame, and its mark's
+        //- see OnDrawNodeBorder), the plain border it takes the place of, and a pixel or two of anti-aliasing
+        private Rectangle HoverRingArea(STNode node) {
+            RectangleF area = node.Rectangle;
+            if (!string.IsNullOrEmpty(node.Mark)) area = RectangleF.Union(area, node.MarkRectangle);
+            float ring = Math.Max(m_pen_border_hover.Width, m_pen_border.Width);
+            float reach = Math.Max(2f, (float)Math.Ceiling(ring / 2f)) + ring / 2f + 6f;
+            area.Inflate(reach, reach);
+            return ControlArea(this.CanvasToControl(area));
+        }
+
+        //All a hovered line's highlight can cover on screen: the path, out by half the highlight pen and anti-aliasing
+        private Rectangle HoverLinkArea(GraphicsPath path) {
+            RectangleF area = path.GetBounds();
+            float reach = m_p_line_hover.Width / 2f + 2f;
+            area.Inflate(reach, reach);
+            return ControlArea(this.CanvasToControl(area));
+        }
+
+        //Whole pixels round a control area, with a couple to spare
+        private static Rectangle ControlArea(RectangleF area) {
+            return Rectangle.FromLTRB((int)Math.Floor(area.Left) - 2, (int)Math.Floor(area.Top) - 2, (int)Math.Ceiling(area.Right) + 2, (int)Math.Ceiling(area.Bottom) + 2);
         }
 
         public STNode GetHoveredNode()
@@ -1698,20 +1762,36 @@ namespace ST.Library.UI.NodeEditor
         /// <param name="nHeight">Need to draw height</param>
         protected virtual void OnDrawGrid(DrawingTools dt, int nWidth, int nHeight) {
             Graphics g = dt.Graphics;
-            using (Pen p_2 = new Pen(Color.FromArgb(65, this._GridColor))) {
-                using (Pen p_1 = new Pen(Color.FromArgb(30, this._GridColor))) {
-                    float nIncrement = (20 * this._CanvasScale);                      //The interval between the grids is drawn according to the scale
-                    int n = 5 - (int)(this._CanvasOffsetX / nIncrement);
-                    for (float f = this._CanvasOffsetX % nIncrement; f < nWidth; f += nIncrement)
-                        g.DrawLine((n++ % 5 == 0 ? p_2 : p_1), f, 0, f, nHeight);
-                    n = 5 - (int)(this._CanvasOffsetY / nIncrement);
-                    for (float f = this._CanvasOffsetY % nIncrement; f < nHeight; f += nIncrement)
-                        g.DrawLine((n++ % 5 == 0 ? p_2 : p_1), 0, f, nWidth, f);
-                    //Two antennas at origin
-                    p_1.Color = Color.FromArgb(this._Nodes.Count == 0 ? 255 : 120, this._GridColor);
-                    g.DrawLine(p_1, this._CanvasOffsetX, 0, this._CanvasOffsetX, nHeight);
-                    g.DrawLine(p_1, 0, this._CanvasOffsetY, nWidth, this._CanvasOffsetY);
+            //OpenCAGE: each pen's lines in one direction go in one path, drawn at once - hundreds of lines zoomed out, each its own
+            //GDI+ call before. The same pixels: the lines of a direction never share one (the zoom keeps them 4px apart at least),
+            //and the vertical ones are all down before any horizontal one crosses them, as they were.
+            using (Pen p_2 = new Pen(Color.FromArgb(65, this._GridColor)))
+            using (Pen p_1 = new Pen(Color.FromArgb(30, this._GridColor)))
+            using (GraphicsPath strong = new GraphicsPath())
+            using (GraphicsPath faint = new GraphicsPath()) {
+                float nIncrement = (20 * this._CanvasScale);                      //The interval between the grids is drawn according to the scale
+                int n = 5 - (int)(this._CanvasOffsetX / nIncrement);
+                for (float f = this._CanvasOffsetX % nIncrement; f < nWidth; f += nIncrement) {
+                    GraphicsPath path = n++ % 5 == 0 ? strong : faint;
+                    path.StartFigure();
+                    path.AddLine(f, 0, f, nHeight);
                 }
+                g.DrawPath(p_2, strong);
+                g.DrawPath(p_1, faint);
+                strong.Reset();
+                faint.Reset();
+                n = 5 - (int)(this._CanvasOffsetY / nIncrement);
+                for (float f = this._CanvasOffsetY % nIncrement; f < nHeight; f += nIncrement) {
+                    GraphicsPath path = n++ % 5 == 0 ? strong : faint;
+                    path.StartFigure();
+                    path.AddLine(0, f, nWidth, f);
+                }
+                g.DrawPath(p_2, strong);
+                g.DrawPath(p_1, faint);
+                //Two antennas at origin
+                p_1.Color = Color.FromArgb(this._Nodes.Count == 0 ? 255 : 120, this._GridColor);
+                g.DrawLine(p_1, this._CanvasOffsetX, 0, this._CanvasOffsetX, nHeight);
+                g.DrawLine(p_1, 0, this._CanvasOffsetY, nWidth, this._CanvasOffsetY);
             }
         }
         /// <summary>
@@ -1769,6 +1849,7 @@ namespace ST.Library.UI.NodeEditor
                     else img_border = m_img_border;
                     this.RenderBorder(dt.Graphics, node.Rectangle, img_border);
                     if (!string.IsNullOrEmpty(node.Mark)) this.RenderBorder(dt.Graphics, node.MarkRectangle, img_border);
+                    if (img_border == m_img_border_hover) this.NoteHoverMark(this.HoverRingArea(node));
                 }
                             else
                 {
@@ -1793,6 +1874,7 @@ namespace ST.Library.UI.NodeEditor
                     int grow = Math.Max(2, (int)Math.Ceiling(pen_border.Width / 2f));
                     borderRect.Inflate(grow, grow);
                     RoundedCornerUtils.DrawRoundedRectangle(dt.Graphics, pen_border, borderRect, mRoundedCornerRadius + grow);
+                    if (pen_border == m_pen_border_hover) this.NoteHoverMark(this.HoverRingArea(node));
                 }
                 else
                 {
@@ -1943,6 +2025,7 @@ namespace ST.Library.UI.NodeEditor
                 try
                 {
                     g.DrawPath(m_p_line_hover, m_gp_hover);
+                    this.NoteHoverMark(this.HoverLinkArea(m_gp_hover));
                 }
                 catch (Exception) { }
             }
