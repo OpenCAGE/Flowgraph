@@ -1088,6 +1088,12 @@ namespace ST.Library.UI.NodeEditor
 
         public void BuildSize(bool bBuildNode, bool bBuildMark, bool bRedraw) {
             if (this._Owner == null) return;
+            //Nothing to measure (a node moved, with no mark): no Graphics made for it - every move of every node made one.
+            //Not before the editor has its window, which making one would have created
+            if (!(this._AutoSize && bBuildNode) && !(bBuildMark && !string.IsNullOrEmpty(this._Mark)) && this._Owner.IsHandleCreated) {
+                if (bRedraw) this._Owner.Invalidate();
+                return;
+            }
             using (Graphics g = this._Owner.CreateGraphics()) {
                 if (this._AutoSize && bBuildNode) {
                     Size sz = this.GetDefaultNodeSize(g);
@@ -1240,6 +1246,12 @@ namespace ST.Library.UI.NodeEditor
             this.OnDrawBody(dt);
 
             this.DrawVariantOutline(dt, 1.5f);
+        }
+
+        //The canvas's scale, from the transform - which the getter hands back as a new Matrix each time, for disposing
+        private static float CurrentZoom(Graphics g) {
+            using (Matrix transform = g.Transform)
+                return transform.Elements[0];
         }
 
         // OpenCAGE: a proxy's (purple) or alias's (blue) dashed outline, round the whole node
@@ -1452,7 +1464,7 @@ namespace ST.Library.UI.NodeEditor
             Font subFontToUse = this._Font;
             bool fontCreated = false;
             
-            float zoom = dt.Graphics.Transform.Elements[0];
+            float zoom = CurrentZoom(dt.Graphics);
             if (this.Owner != null && zoom > 1.0f) {
                 // When zoomed in, reduce font size to show more text.
                 float newSize = this._FontBold.Size / zoom;
@@ -1490,6 +1502,7 @@ namespace ST.Library.UI.NodeEditor
 
             // Restore original clipping region and dispose temporary fonts
             g.SetClip(oldClip, CombineMode.Replace);
+            oldClip.Dispose(); //the getter made it: left to the finalizer, one a node, every paint
             if (fontCreated) {
                 fontToUse.Dispose();
                 subFontToUse.Dispose();
@@ -1678,7 +1691,7 @@ namespace ST.Library.UI.NodeEditor
 
             // Apply smooth scaling for horizontal (top/bottom) pins.
             if (isHorizontalPin) {
-                float zoom = dt.Graphics.Transform.Elements[0];
+                float zoom = CurrentZoom(dt.Graphics);
                 // Always scale the font size by the inverse of the zoom.
                 // This keeps the text at a consistent size on the screen, creating a smooth effect.
                 if (zoom > 0) {
@@ -1699,6 +1712,7 @@ namespace ST.Library.UI.NodeEditor
             // Restore the original graphics state.
             g.SetClip(oldClip, CombineMode.Replace);
             g.SmoothingMode = SmoothingMode.None;
+            oldClip.Dispose();
     
             if (fontCreated) {
                 fontToUse.Dispose();
@@ -1746,7 +1760,7 @@ namespace ST.Library.UI.NodeEditor
             bool fontCreated = false;
 
             // Apply smooth scaling
-            float zoom = dt.Graphics.Transform.Elements[0];
+            float zoom = CurrentZoom(dt.Graphics);
             if (zoom > 0) {
                 float newSize = Math.Min(this._FontBold.Size / zoom, this._FontBold.Size);
                 fontToUse = new Font(this._FontBold.FontFamily, newSize, this._FontBold.Style);
@@ -1790,6 +1804,7 @@ namespace ST.Library.UI.NodeEditor
             // Restore the original graphics state
             g.SetClip(oldClip, CombineMode.Replace);
             g.SmoothingMode = SmoothingMode.None;
+            oldClip.Dispose();
 
             if (fontCreated) {
                 fontToUse.Dispose();
