@@ -1734,9 +1734,15 @@ namespace ST.Library.UI.NodeEditor
             if (!RenderingOptions)
                 return;
 
+            // OpenCAGE: a top pin's value goes above it
+            if (op.Location == PinLocation.Top) {
+                this.DrawTopText(dt, op);
+                return;
+            }
+
             Graphics g = dt.Graphics;
             SolidBrush brush = dt.SolidBrush;
-            
+
             string optionalText = "";
             bool isLeftPin = op.Location == PinLocation.Left;
             bool isRightPin = op.Location == PinLocation.Right;
@@ -1810,6 +1816,48 @@ namespace ST.Library.UI.NodeEditor
                 fontToUse.Dispose();
             }
         }
+
+        /// <summary>
+        /// OpenCAGE: a top pin's TopText - the value the host has for it - just above its arrow, in the delay text's colour
+        /// but not bold, centred on the pin. It is cut short with an ellipsis to the pin's own share of the bar (its
+        /// TextRectangle's width), so it never runs into the text over the pins either side.
+        /// </summary>
+        private void DrawTopText(DrawingTools dt, STNodeOption op) {
+            if (string.IsNullOrEmpty(op.TopText)) return;
+            Graphics g = dt.Graphics;
+
+            // Scaled as the pin's label is: the same size on screen zoomed in, smaller zoomed out
+            Font fontToUse = this._Font;
+            bool fontCreated = false;
+            float zoom = CurrentZoom(g);
+            if (zoom > 0) {
+                float newSize = Math.Min(this._Font.Size / zoom, this._Font.Size);
+                fontToUse = new Font(this._Font.FontFamily, newSize, this._Font.Style);
+                fontCreated = true;
+            }
+
+            Rectangle slot = op.TextRectangle;
+            float height = fontToUse.GetHeight(g);
+            float bottom = Math.Min(op.DotTop, this._Top) - TopTextGap;
+            RectangleF textRect = new RectangleF(slot.Left + TopTextGap, bottom - height, slot.Width - TopTextGap * 2f, height);
+            if (textRect.Width >= 1f) {
+                dt.SolidBrush.Color = op.OptionalTextColor;
+                g.SmoothingMode = SmoothingMode.HighQuality;
+                g.DrawString(op.TopText, fontToUse, dt.SolidBrush, textRect, s_topTextFormat);
+                g.SmoothingMode = SmoothingMode.None;
+            }
+
+            if (fontCreated) {
+                fontToUse.Dispose();
+            }
+        }
+        private const float TopTextGap = 2f;   // between a top pin's value and its arrow, and the values either side
+        private static readonly StringFormat s_topTextFormat = new StringFormat(StringFormatFlags.NoWrap) {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Far,
+            Trimming = StringTrimming.EllipsisCharacter,
+        };
+
         // OpenCAGE: the label beside a badge, cut short with an ellipsis when the row gets too full
         private static readonly StringFormat s_badgeLabelNear = new StringFormat(StringFormatFlags.NoWrap) {
             Alignment = StringAlignment.Near,
@@ -1973,7 +2021,7 @@ namespace ST.Library.UI.NodeEditor
         }
 
         /// <summary>
-        /// OpenCAGE: draw only what the node itself paints outside its body - its pins and the text beside them
+        /// OpenCAGE: draw only what the node itself paints outside its body - its pins and the text beside or above them
         /// (OnDrawOptionalText) - in the order its full drawing does, for a repaint that does not reach the body (see
         /// STNodeEditor's NodeBodyBounds; the editor draws the border round it). Only when CanDrawOutsideBody.
         /// </summary>
@@ -1982,6 +2030,10 @@ namespace ST.Library.UI.NodeEditor
                 foreach (STNodeOption op in options) {
                     if (op == STNodeOption.Empty) continue;
                     this.OnDrawOptionDot(dt, op);
+                    if (RenderingOptions && op.Location == PinLocation.Top) {
+                        this.OnDrawOptionalText(dt, op);   // its value, above it
+                        continue;
+                    }
                     if (!RenderingOptions || (op.Location != PinLocation.Left && op.Location != PinLocation.Right)) continue;
                     m_sf.Alignment = op.Location == PinLocation.Left ? StringAlignment.Near : StringAlignment.Far;   // as OnDrawOptionText leaves it
                     m_sf.LineAlignment = StringAlignment.Center;

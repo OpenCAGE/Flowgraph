@@ -114,6 +114,20 @@ namespace ST.Library.UI.NodeEditor
             }
         }
 
+        private string _TopText = "";
+        /// <summary>
+        /// OpenCAGE: get or set optional text to display above the pin (for top pins), not bold - the value the host has for it
+        /// </summary>
+        public string TopText {
+            get { return _TopText; }
+            set {
+                if (value == null) value = "";
+                if (value == _TopText) return;
+                _TopText = value;
+                this.Invalidate();
+            }
+        }
+
         private Color _OptionalTextColor = Color.Orange;
         /// <summary>
         /// Get or set the color for optional text display
